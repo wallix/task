@@ -10,10 +10,10 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/sajari/fuzzy"
 
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/internal/output"
-	"github.com/go-task/task/v3/internal/sort"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/internal/output"
+	"github.com/wallix/task/v3/internal/sort"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 type (

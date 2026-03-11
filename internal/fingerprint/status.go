@@ -3,10 +3,10 @@ package fingerprint
 import (
 	"context"
 
-	"github.com/go-task/task/v3/internal/env"
-	"github.com/go-task/task/v3/internal/execext"
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/internal/env"
+	"github.com/wallix/task/v3/internal/execext"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 type StatusChecker struct {

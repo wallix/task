@@ -9,15 +9,15 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/go-task/task/v3"
-	"github.com/go-task/task/v3/args"
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/experiments"
-	"github.com/go-task/task/v3/internal/filepathext"
-	"github.com/go-task/task/v3/internal/flags"
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/internal/version"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3"
+	"github.com/wallix/task/v3/args"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/experiments"
+	"github.com/wallix/task/v3/internal/filepathext"
+	"github.com/wallix/task/v3/internal/flags"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/internal/version"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 func main() {

@@ -3,10 +3,10 @@ package task
 import (
 	"slices"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/input"
-	"github.com/go-task/task/v3/internal/term"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/input"
+	"github.com/wallix/task/v3/internal/term"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 func (e *Executor) canPrompt() bool {

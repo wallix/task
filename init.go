@@ -4,9 +4,9 @@ import (
 	_ "embed"
 	"os"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/filepathext"
-	"github.com/go-task/task/v3/taskfile"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/filepathext"
+	"github.com/wallix/task/v3/taskfile"
 )
 
 const defaultFilename = "Taskfile.yml"

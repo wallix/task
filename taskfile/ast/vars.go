@@ -7,8 +7,8 @@ import (
 	"github.com/elliotchance/orderedmap/v3"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/deepcopy"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/deepcopy"
 )
 
 type (

@@ -208,7 +208,7 @@ tasks:
       VERSION:
         sh: "go run ./cmd/release --version {{index .MATCH 0}}"
       COMPLETE_MESSAGE: |
-        Creating release with GoReleaser: https://github.com/go-task/task/actions/workflows/release.yml
+        Creating release with GoReleaser: https://github.com/wallix/task/actions/workflows/release.yml
 
         Please wait for the CI to finish and then do the following:
 

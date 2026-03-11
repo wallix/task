@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/internal/templater"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/internal/templater"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 type Output interface {

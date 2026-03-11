@@ -7,7 +7,7 @@ package fingerprint
 import (
 	"context"
 
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/taskfile/ast"
 	mock "github.com/stretchr/testify/mock"
 )
 

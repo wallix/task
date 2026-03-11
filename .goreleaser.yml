@@ -33,7 +33,7 @@ builds:
       - -trimpath
     ldflags:
       - "-s -w"
-      - "{{if .IsNightly}}-X github.com/go-task/task/v3/internal/version.version={{.Version}}{{end}}"
+      - "{{if .IsNightly}}-X github.com/wallix/task/v3/internal/version.version={{.Version}}{{end}}"
 
 gomod:
   proxy: true
@@ -107,13 +107,13 @@ winget:
     license: MIT
     homepage: https://taskfile.dev/
     publisher_url: https://taskfile.dev/
-    publisher_support_url: https://github.com/go-task/task/issues
+    publisher_support_url: https://github.com/wallix/task/issues
     package_identifier: Task.Task
     commit_author:
       name: task-bot
       email: 106601941+task-bot@users.noreply.github.com
     commit_msg_template: 'chore: release {{.PackageIdentifier}} {{.Tag}}'
-    release_notes_url: https://github.com/go-task/task/releases/tag/{{.Tag}}
+    release_notes_url: https://github.com/wallix/task/releases/tag/{{.Tag}}
     tags:
       - build
       - build-tool
@@ -144,8 +144,8 @@ winget:
 
 npms:
   - name: "@go-task/cli"
-    repository: "git+https://github.com/go-task/task.git"
-    bugs: https://github.com/go-task/task/issues
+    repository: "git+https://github.com/wallix/task.git"
+    bugs: https://github.com/wallix/task/issues
     description: A fast, cross-platform build tool inspired by Make, designed for modern workflows.
     homepage: https://taskfile.dev
     license: MIT

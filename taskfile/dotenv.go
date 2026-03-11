@@ -6,9 +6,9 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/go-task/task/v3/internal/filepathext"
-	"github.com/go-task/task/v3/internal/templater"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/internal/filepathext"
+	"github.com/wallix/task/v3/internal/templater"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 func Dotenv(vars *ast.Vars, tf *ast.Taskfile, dir string) (*ast.Vars, error) {

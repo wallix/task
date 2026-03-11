@@ -9,14 +9,14 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/deepcopy"
-	"github.com/go-task/task/v3/internal/env"
-	"github.com/go-task/task/v3/internal/execext"
-	"github.com/go-task/task/v3/internal/filepathext"
-	"github.com/go-task/task/v3/internal/fingerprint"
-	"github.com/go-task/task/v3/internal/templater"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/deepcopy"
+	"github.com/wallix/task/v3/internal/env"
+	"github.com/wallix/task/v3/internal/execext"
+	"github.com/wallix/task/v3/internal/filepathext"
+	"github.com/wallix/task/v3/internal/fingerprint"
+	"github.com/wallix/task/v3/internal/templater"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 // CompiledTask returns a copy of a task, but replacing variables in almost all

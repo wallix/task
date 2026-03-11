@@ -12,11 +12,11 @@ import (
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/env"
-	"github.com/go-task/task/v3/internal/filepathext"
-	"github.com/go-task/task/v3/internal/templater"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/env"
+	"github.com/wallix/task/v3/internal/filepathext"
+	"github.com/wallix/task/v3/internal/templater"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 const (

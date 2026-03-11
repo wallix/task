@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for your bug report!
 
-        Before submitting, please check the list of [existing issues](https://github.com/go-task/task/issues) and make sure the same bug was not already reported by someone else.
+        Before submitting, please check the list of [existing issues](https://github.com/wallix/task/issues) and make sure the same bug was not already reported by someone else.
 
   - type: textarea
     id: description

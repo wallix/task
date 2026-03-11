@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 // TimestampChecker checks if any source change compared with the generated files,

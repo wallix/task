@@ -12,17 +12,17 @@ import (
 	"golang.org/x/sync/errgroup"
 	"mvdan.cc/sh/v3/interp"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/env"
-	"github.com/go-task/task/v3/internal/execext"
-	"github.com/go-task/task/v3/internal/fingerprint"
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/internal/output"
-	"github.com/go-task/task/v3/internal/slicesext"
-	"github.com/go-task/task/v3/internal/sort"
-	"github.com/go-task/task/v3/internal/summary"
-	"github.com/go-task/task/v3/internal/templater"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/env"
+	"github.com/wallix/task/v3/internal/execext"
+	"github.com/wallix/task/v3/internal/fingerprint"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/internal/output"
+	"github.com/wallix/task/v3/internal/slicesext"
+	"github.com/wallix/task/v3/internal/sort"
+	"github.com/wallix/task/v3/internal/summary"
+	"github.com/wallix/task/v3/internal/templater"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 const (

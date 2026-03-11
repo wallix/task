@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 func PrintTasks(l *logger.Logger, t *ast.Taskfile, c []string) {

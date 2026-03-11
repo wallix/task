@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.50.0 - 2026-03-13
+
+This is a fork of [Task](https://taskfile.dev) maintained by WALLIX.
+
+- Based on Task v3.49.1.
+
 ## v3.49.1 - 2026-03-08
 
 * Reverted #2632 for now, which caused some regressions. That change will be

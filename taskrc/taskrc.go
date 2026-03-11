@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/fsext"
-	"github.com/go-task/task/v3/taskrc/ast"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/fsext"
+	"github.com/wallix/task/v3/taskrc/ast"
 )
 
 var (

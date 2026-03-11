@@ -13,7 +13,7 @@ formatters:
         - pattern: interface{}
           replacement: any
     gofumpt:
-      module-path: github.com/go-task/task/v3
+      module-path: github.com/wallix/task/v3
     goimports:
       local-prefixes:
         - github.com/go-task
@@ -50,7 +50,7 @@ linters:
             - '!**/errors/*.go'
           deny:
             - pkg: errors
-              desc: Use github.com/go-task/task/v3/errors instead
+              desc: Use github.com/wallix/task/v3/errors instead
   exclusions:
     generated: lax
     presets:

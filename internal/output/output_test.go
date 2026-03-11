@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/internal/output"
-	"github.com/go-task/task/v3/internal/templater"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/internal/output"
+	"github.com/wallix/task/v3/internal/templater"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 func TestInterleaved(t *testing.T) {

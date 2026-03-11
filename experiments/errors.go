@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-task/task/v3/internal/slicesext"
+	"github.com/wallix/task/v3/internal/slicesext"
 )
 
 type InvalidValueError struct {

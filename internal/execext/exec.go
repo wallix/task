@@ -13,7 +13,7 @@ import (
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 
-	"github.com/go-task/task/v3/errors"
+	"github.com/wallix/task/v3/errors"
 )
 
 // ErrNilOptions is returned when a nil options is given

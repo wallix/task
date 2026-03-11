@@ -6,8 +6,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/goext"
+	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/goext"
 )
 
 // Platform represents GOOS and GOARCH values

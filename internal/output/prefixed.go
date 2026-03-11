@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-task/task/v3/internal/logger"
-	"github.com/go-task/task/v3/internal/templater"
+	"github.com/wallix/task/v3/internal/logger"
+	"github.com/wallix/task/v3/internal/templater"
 )
 
 type Prefixed struct {

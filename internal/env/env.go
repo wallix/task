@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-task/task/v3/experiments"
-	"github.com/go-task/task/v3/taskfile/ast"
+	"github.com/wallix/task/v3/experiments"
+	"github.com/wallix/task/v3/taskfile/ast"
 )
 
 const taskVarPrefix = "TASK_"

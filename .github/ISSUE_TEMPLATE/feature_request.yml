@@ -7,8 +7,8 @@ body:
       value: |
         Thanks for your feature request!
 
-        Before submitting, please check the list of [existing issues](https://github.com/go-task/task/issues) and make sure the same change was not already requested by someone else.
-        If your request is more of an idea than a feature request, consider opening a [discussion](https://github.com/go-task/task/discussions) instead.
+        Before submitting, please check the list of [existing issues](https://github.com/wallix/task/issues) and make sure the same change was not already requested by someone else.
+        If your request is more of an idea than a feature request, consider opening a [discussion](https://github.com/wallix/task/discussions) instead.
 
   - type: textarea
     id: description
