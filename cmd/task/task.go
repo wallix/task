@@ -134,11 +134,6 @@ func run() error {
 		return err
 	}
 
-	if flags.ClearCache {
-		cachePath := filepath.Join(e.TempDir.Remote, "remote")
-		return os.RemoveAll(cachePath)
-	}
-
 	listOptions := task.NewListOptions(
 		flags.List,
 		flags.ListAll,
@@ -186,7 +181,6 @@ func run() error {
 	specialVars.Set("CLI_FORCE", ast.Var{Value: flags.Force || flags.ForceAll})
 	specialVars.Set("CLI_SILENT", ast.Var{Value: flags.Silent})
 	specialVars.Set("CLI_VERBOSE", ast.Var{Value: flags.Verbose})
-	specialVars.Set("CLI_OFFLINE", ast.Var{Value: flags.Offline})
 	specialVars.Set("CLI_ASSUME_YES", ast.Var{Value: flags.AssumeYes})
 	e.Taskfile.Vars.ReverseMerge(specialVars, nil)
 	if !flags.Watch {

@@ -24,7 +24,6 @@ type (
 		AdvancedImport bool
 		Vars           *Vars
 		Flatten        bool
-		Checksum       string
 	}
 	// Includes is an ordered map of namespaces to includes.
 	Includes struct {
@@ -166,7 +165,6 @@ func (include *Include) UnmarshalYAML(node *yaml.Node) error {
 			Aliases  []string
 			Excludes []string
 			Vars     *Vars
-			Checksum string
 		}
 		if err := node.Decode(&includedTaskfile); err != nil {
 			return errors.NewTaskfileDecodeError(err, node)
@@ -180,7 +178,6 @@ func (include *Include) UnmarshalYAML(node *yaml.Node) error {
 		include.AdvancedImport = true
 		include.Vars = includedTaskfile.Vars
 		include.Flatten = includedTaskfile.Flatten
-		include.Checksum = includedTaskfile.Checksum
 		return nil
 	}
 
@@ -204,6 +201,5 @@ func (include *Include) DeepCopy() *Include {
 		Vars:           include.Vars.DeepCopy(),
 		Flatten:        include.Flatten,
 		Aliases:        deepcopy.Slice(include.Aliases),
-		Checksum:       include.Checksum,
 	}
 }
