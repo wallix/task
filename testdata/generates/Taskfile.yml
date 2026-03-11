@@ -12,7 +12,7 @@ tasks:
     dir: sub
     cmds:
       - cat src.txt > '{{.BUILD_DIR}}/abs.txt'
-    method: timestamp
+    method: checksum
     sources:
       - src.txt
     generates:
@@ -25,7 +25,7 @@ tasks:
     dir: sub
     cmds:
       - cat src.txt > '../rel.txt'
-    method: timestamp
+    method: checksum
     sources:
       - src.txt
     generates:
@@ -36,7 +36,7 @@ tasks:
     cmds:
       - mkdir -p sub
       - echo "hello world" > sub/src.txt
-    method: timestamp
+    method: checksum
     status:
       - test -f sub/src.txt
 
@@ -45,7 +45,7 @@ tasks:
     deps: [sub/src.txt]
     cmds:
       - cat sub/src.txt > 'my text file.txt'
-    method: timestamp
+    method: checksum
     sources:
       - sub/src.txt
     generates:

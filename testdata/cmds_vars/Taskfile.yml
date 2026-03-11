@@ -6,11 +6,3 @@ tasks:
       - ./source.txt
     cmds:
       - echo "{{.CHECKSUM}}"
-
-  build-ts:
-    method: timestamp
-    sources:
-      - ./source.txt
-    cmds:
-      - echo '{{.TIMESTAMP.Unix}}'
-      - echo '{{.TIMESTAMP}}'
