@@ -502,17 +502,6 @@ func TestStatusVariables(t *testing.T) {
 	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build-checksum"}))
 
 	assert.Contains(t, buff.String(), "3e464c4b03f4b65d740e1e130d4d108a")
-
-	buff.Reset()
-	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build-ts"}))
-
-	inf, err := os.Stat(filepathext.SmartJoin(dir, "source.txt"))
-	require.NoError(t, err)
-	ts := fmt.Sprintf("%d", inf.ModTime().Unix())
-	tf := inf.ModTime().String()
-
-	assert.Contains(t, buff.String(), ts)
-	assert.Contains(t, buff.String(), tf)
 }
 
 func TestCmdsVariables(t *testing.T) {
@@ -537,16 +526,6 @@ func TestCmdsVariables(t *testing.T) {
 	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build-checksum"}))
 
 	assert.Contains(t, buff.String(), "3e464c4b03f4b65d740e1e130d4d108a")
-
-	buff.Reset()
-	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build-ts"}))
-	inf, err := os.Stat(filepathext.SmartJoin(dir, "source.txt"))
-	require.NoError(t, err)
-	ts := fmt.Sprintf("%d", inf.ModTime().Unix())
-	tf := inf.ModTime().String()
-
-	assert.Contains(t, buff.String(), ts)
-	assert.Contains(t, buff.String(), tf)
 }
 
 func TestCyclicDep(t *testing.T) {

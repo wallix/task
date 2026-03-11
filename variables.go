@@ -182,13 +182,7 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 	}
 
 	if len(origTask.Sources) > 0 && origTask.Method != "none" {
-		var checker fingerprint.SourcesCheckable
-
-		if origTask.Method == "timestamp" {
-			checker = fingerprint.NewTimestampChecker(e.TempDir.Fingerprint, e.Dry)
-		} else {
-			checker = fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry)
-		}
+		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry)
 
 		value, err := checker.Value(&new)
 		if err != nil {
