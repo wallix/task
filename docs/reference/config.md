@@ -180,4 +180,4 @@ concurrency: 2
 
 # Enable experimental features
 experiments:
-  REMOTE_TASKFILES: 1
+  ENV_PRECEDENCE: 1

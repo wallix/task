@@ -49,14 +49,11 @@ as we refine the API.
 ### [`github.com/wallix/task/v3/taskfile`]
 
 The `taskfile` package provides utilities for _reading_ Taskfiles from various
-sources. These sources can be local files, remote files, or even in-memory
-strings (via stdin).
+sources. These sources can be local files or even in-memory strings (via stdin).
 
 - [`taskfile.Node`] - A reference to the location of a Taskfile. A `Node` is an
   interface that has several implementations:
   - [`taskfile.FileNode`] - Local files
-  - [`taskfile.HTTPNode`] - Remote files via HTTP/HTTPS
-  - [`taskfile.GitNode`] - Remote files via Git
   - [`taskfile.StdinNode`] - In-memory strings (via stdin)
 - [`taskfile.Reader`] - Accepts a `Node` and reads the Taskfile from it.
 - [`taskfile.Snippet`] - Mostly used for rendering Taskfile errors. A snippet
@@ -159,10 +156,6 @@ causes lots of issues with scoping.
 [`taskfile.Node`]: https://pkg.go.dev/github.com/wallix/task/v3/taskfile#Node
 [`taskfile.FileNode`]:
   https://pkg.go.dev/github.com/wallix/task/v3/taskfile#FileNode
-[`taskfile.HTTPNode`]:
-  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#HTTPNode
-[`taskfile.GitNode`]:
-  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#GitNode
 [`taskfile.StdinNode`]:
   https://pkg.go.dev/github.com/wallix/task/v3/taskfile#StdinNode
 [`taskfile.NewFileNode`]:

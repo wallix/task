@@ -313,18 +313,6 @@ includes:
       ENVIRONMENT: production
 ```
 
-### `checksum`
-
-- **Type**: `string`
-- **Description**: Expected checksum of the included file
-
-```yaml
-includes:
-  remote:
-    taskfile: https://example.com/tasks.yml
-    checksum: c153e97e0b3a998a7ed2e61064c6ddaddd0de0c525feefd6bba8569827d8efe9
-```
-
 ## Variable
 
 Variables support multiple types and can be static values, dynamic commands,

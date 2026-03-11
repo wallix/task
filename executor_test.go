@@ -1049,15 +1049,6 @@ func TestIncludeChecksum(t *testing.T) {
 			task.WithDir("testdata/includes_checksum/correct"),
 		),
 	)
-
-	NewExecutorTest(t,
-		WithName("incorrect"),
-		WithExecutorOptions(
-			task.WithDir("testdata/includes_checksum/incorrect"),
-		),
-		WithSetupError(),
-		WithFixtureTemplating(),
-	)
 }
 
 func TestIncludeSilent(t *testing.T) {

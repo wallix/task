@@ -18,15 +18,14 @@ const (
 	CodeTaskfileNotFound int = iota + 100
 	CodeTaskfileAlreadyExists
 	CodeTaskfileDecode
-	CodeTaskfileFetchFailed
-	CodeTaskfileNotTrusted
-	CodeTaskfileNotSecure
-	CodeTaskfileCacheNotFound
+	_
+	_
+	_
+	_
 	CodeTaskfileVersionCheckError
-	CodeTaskfileNetworkTimeout
+	_
 	CodeTaskfileInvalid
 	CodeTaskfileCycle
-	CodeTaskfileDoesNotMatchChecksum
 )
 
 // Task related exit codes

@@ -369,10 +369,6 @@ Task uses specific exit codes to indicate different types of errors:
 - **100** - No Taskfile found
 - **101** - Taskfile already exists (when using `--init`)
 - **102** - Invalid or unparseable Taskfile
-- **103** - Remote Taskfile download failed
-- **104** - Remote Taskfile not trusted
-- **105** - Remote Taskfile fetch not secure
-- **106** - No cache for remote Taskfile in offline mode
 - **107** - No schema version defined in Taskfile
 
 ### Task Errors (200-255)
