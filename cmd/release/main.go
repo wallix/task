@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	changelogSource = "CHANGELOG.md"
-	changelogTarget = "website/src/docs/changelog.md"
-	versionFile     = "internal/version/version.txt"
+	changelogFile = "CHANGELOG.md"
+	versionFile   = "internal/version/version.txt"
 )
 
 var changelogReleaseRegex = regexp.MustCompile(`## Unreleased`)
@@ -91,22 +90,7 @@ func bumpVersion(version *semver.Version, verb string) error {
 }
 
 func changelog(version *semver.Version) error {
-	// Open changelog target file
-	b, err := os.ReadFile(changelogTarget)
-	if err != nil {
-		return err
-	}
-
-	// Get the current frontmatter
-	currentChangelog := string(b)
-	sections := strings.SplitN(currentChangelog, "---", 3)
-	if len(sections) != 3 {
-		return errors.New("error: invalid frontmatter")
-	}
-	frontmatter := strings.TrimSpace(sections[1])
-
-	// Open changelog source file
-	b, err = os.ReadFile(changelogSource)
+	b, err := os.ReadFile(changelogFile)
 	if err != nil {
 		return err
 	}
@@ -116,20 +100,7 @@ func changelog(version *semver.Version) error {
 	// Replace "Unreleased" with the new version and date
 	changelog = changelogReleaseRegex.ReplaceAllString(changelog, fmt.Sprintf("## v%s - %s", version, date))
 
-	// Write the changelog to the source file
-	if err := os.WriteFile(changelogSource, []byte(changelog), 0o644); err != nil {
-		return err
-	}
-
-	// Wrap the changelog content with v-pre directive for VitePress to prevent
-	// Vue from interpreting template syntax like {{.TASK_VERSION}}
-	changelogWithVPre := strings.Replace(changelog, "# Changelog\n\n", "# Changelog\n\n::: v-pre\n\n", 1) + "\n:::"
-
-	// Add the frontmatter to the changelog
-	changelogWithFrontmatter := fmt.Sprintf("---\n%s\n---\n\n%s", frontmatter, changelogWithVPre)
-
-	// Write the changelog to the target file
-	return os.WriteFile(changelogTarget, []byte(changelogWithFrontmatter), 0o644)
+	return os.WriteFile(changelogFile, []byte(changelog), 0o644)
 }
 
 func setVersionFile(fileName string, version *semver.Version) error {

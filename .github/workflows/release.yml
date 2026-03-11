@@ -1,4 +1,4 @@
-name: goreleaser
+name: Release
 
 on:
   push:
@@ -6,54 +6,83 @@ on:
       - 'v*'
 
 permissions:
-  id-token: write  # Required for OIDC
-  contents: read
+  contents: write
 
 jobs:
-  goreleaser:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: linux,   goarch: arm,   goarm: '6' }
+          - { goos: linux,   goarch: '386' }
+          - { goos: linux,   goarch: riscv64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          - { goos: windows, goarch: '386' }
+          - { goos: freebsd, goarch: amd64 }
+          - { goos: freebsd, goarch: arm64 }
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: 1.26.x
 
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Update npm
-        run: npm install -g npm@latest
-
-      - name: Install Task
-        uses: go-task/setup-task@0ab1b2a65bc55236a3bc64cde78f80e20e8885c2 # v1
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-        with:
-          package_json_file: 'website/package.json'
-          run_install: 'true'
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7
-        with:
-          distribution: goreleaser-pro
-          version: latest
-          args: release --clean --draft
+      - name: Build
         env:
-          GITHUB_TOKEN: ${{secrets.GH_PAT}}
-          GORELEASER_KEY: ${{secrets.GORELEASER_KEY}}
-          CLOUDSMITH_TOKEN: ${{secrets.CLOUDSMITH_TOKEN}}
-
-      - name: Deploy Website
-        shell: bash
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
         run: |
-          task website:deploy:prod
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          go build -trimpath -ldflags="-s -w" -o "task${ext}" ./cmd/task
+
+      - name: Package
+        run: |
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then ext=".exe"; fi
+          name="task_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir "$name"
+          cp "task${ext}" README.md LICENSE "$name/"
+          cp -r completion "$name/"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip -r "${name}.zip" "$name"
+          else
+            tar czf "${name}.tar.gz" "$name"
+          fi
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: task_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: task_${{ matrix.goos }}_${{ matrix.goarch }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum task_* > task_checksums.txt
+
+      - name: Create release
         env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release create "$tag" artifacts/* \
+            --title "$tag" \
+            --generate-notes

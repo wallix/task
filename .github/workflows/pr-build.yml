@@ -11,57 +11,87 @@ permissions:
 jobs:
   build:
     if: contains(github.event.pull_request.labels.*.name, 'needs-build')
+    strategy:
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
+
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version: '1.26.x'
+          go-version: 1.26.x
           cache: true
-      - uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7
-        with:
-          version: '~> v2'
-          args: release --snapshot --clean --config .goreleaser-pr.yml
+
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          go build -trimpath -ldflags="-s -w" -o "task${ext}" ./cmd/task
+
+      - name: Package
+        run: |
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then ext=".exe"; fi
+          name="task_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir "$name"
+          cp "task${ext}" README.md LICENSE "$name/"
+          cp -r completion "$name/"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip -r "${name}.zip" "$name"
+          else
+            tar czf "${name}.tar.gz" "$name"
+          fi
+
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: task_linux_amd64
-          path: dist/task_linux_amd64.tar.gz
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+          name: task_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: task_${{ matrix.goos }}_${{ matrix.goarch }}.*
+
+  comment:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: task_linux_arm64
-          path: dist/task_linux_arm64.tar.gz
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: task_darwin_amd64
-          path: dist/task_darwin_amd64.tar.gz
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: task_darwin_arm64
-          path: dist/task_darwin_arm64.tar.gz
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: task_windows_amd64
-          path: dist/task_windows_amd64.zip
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum task_* > task_checksums.txt
+
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: checksums
-          path: dist/task_checksums.txt
+          path: artifacts/task_checksums.txt
+
       - uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
         id: find-comment
         with:
           token: ${{ secrets.GH_PAT || github.token }}
           issue-number: ${{ github.event.pull_request.number }}
-          body-includes: '📦 Build artifacts ready!'
+          body-includes: 'Build artifacts ready!'
+
       - uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
         with:
           token: ${{ secrets.GH_PAT || github.token }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## 📦 Build artifacts ready!
+            ## Build artifacts ready!
 
             Download binaries from [this workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
 
