@@ -30,12 +30,12 @@ type (
 	// gen:fixtures`.
 	ExecutorTest struct {
 		TaskTest
-		task            string
-		vars            map[string]any
-		input           string
-		executorOpts    []task.ExecutorOption
-		wantSetupError  bool
-		wantRunError    bool
+		task           string
+		vars           map[string]any
+		input          string
+		executorOpts   []task.ExecutorOption
+		wantSetupError bool
+		wantRunError   bool
 	}
 )
 
