@@ -14,7 +14,9 @@ import (
 	"github.com/go-task/task/v3/internal/env"
 	"github.com/go-task/task/v3/internal/execext"
 	"github.com/go-task/task/v3/internal/fingerprint"
+	"github.com/go-task/task/v3/internal/lock"
 	"github.com/go-task/task/v3/internal/logger"
+	"github.com/go-task/task/v3/internal/redis"
 	"github.com/go-task/task/v3/taskfile/ast"
 )
 
@@ -92,6 +94,8 @@ func (e *Executor) cacheRestore(ctx context.Context, t *ast.Task, sourceHash str
 	switch u.Scheme {
 	case "file":
 		return e.cacheRestoreFile(t, u.Path)
+	case "redis":
+		return e.cacheRestoreRedis(t, u)
 	default:
 		e.Logger.VerboseErrf(logger.Yellow, "task: unsupported cache scheme %q\n", u.Scheme)
 		return false
@@ -144,6 +148,8 @@ func (e *Executor) cacheSave(ctx context.Context, t *ast.Task, sourceHash string
 	switch u.Scheme {
 	case "file":
 		e.cacheSaveFile(t, u.Path)
+	case "redis":
+		e.cacheSaveRedis(t, u)
 	default:
 		e.Logger.VerboseErrf(logger.Yellow, "task: unsupported cache scheme %q\n", u.Scheme)
 	}
@@ -196,4 +202,111 @@ func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
 	}
 
 	e.Logger.VerboseErrf(logger.Magenta, "task: %q saved to cache\n", t.Name())
+}
+
+// cacheRestoreRedis downloads a zip from Redis and extracts it.
+func (e *Executor) cacheRestoreRedis(t *ast.Task, u *url.URL) bool {
+	tmpDir, err := os.MkdirTemp("", "task-cache-*")
+	if err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache restore %q: %v\n", t.Name(), err)
+		return false
+	}
+	defer os.RemoveAll(tmpDir)
+
+	localPath, err := redis.CacheGet(u, tmpDir)
+	if err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache restore %q: %v\n", t.Name(), err)
+		return false
+	}
+	if localPath == "" {
+		return false // cache miss
+	}
+	return e.cacheRestoreFile(t, localPath)
+}
+
+// cacheSaveRedis builds a zip of generates and uploads to Redis.
+func (e *Executor) cacheSaveRedis(t *ast.Task, u *url.URL) {
+	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
+	st, err := checker.Status(t)
+	if err != nil || !st.UpToDate {
+		return
+	}
+	files := st.GenerateFiles
+	if len(files) == 0 {
+		return
+	}
+
+	tmpFile, err := os.CreateTemp("", "task-cache-*.zip")
+	if err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", t.Name(), err)
+		return
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	zw := zip.NewWriter(tmpFile)
+	for _, f := range files {
+		if err := addFileToZip(zw, e.Dir, f); err != nil {
+			e.Logger.VerboseErrf(logger.Yellow, "task: cache save add %s: %v\n", f, err)
+			zw.Close()
+			tmpFile.Close()
+			return
+		}
+	}
+	if err := zw.Close(); err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save finalize: %v\n", err)
+		tmpFile.Close()
+		return
+	}
+	tmpFile.Close()
+
+	if err := redis.CachePut(u, tmpPath); err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", t.Name(), err)
+		return
+	}
+	e.Logger.VerboseErrf(logger.Magenta, "task: %q saved to redis cache\n", t.Name())
+}
+
+// evalCacheLocker evaluates the cache.lock shell command and returns
+// a Locker for the given URL scheme. Returns nil if lock is not configured.
+func (e *Executor) evalCacheLocker(ctx context.Context, t *ast.Task) lock.Locker {
+	if t.Cache == nil || t.Cache.Lock == "" {
+		return nil
+	}
+
+	taskEnv := os.Environ()
+	if extra := env.Get(t); extra != nil {
+		taskEnv = extra
+	}
+
+	var buf bytes.Buffer
+	err := execext.RunCommand(ctx, &execext.RunCommandOptions{
+		Command: t.Cache.Lock,
+		Dir:     t.ComputeDir(),
+		Env:     taskEnv,
+		Stdout:  &buf,
+		Stderr:  io.Discard,
+	})
+	if err != nil {
+		return nil
+	}
+
+	raw := strings.TrimSpace(buf.String())
+	if raw == "" {
+		return nil
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache lock url %q: %v\n", raw, err)
+		return nil
+	}
+
+	switch u.Scheme {
+	case "redis":
+		return redis.NewLocker(u)
+	default:
+		e.Logger.VerboseErrf(logger.Yellow, "task: unsupported lock scheme %q\n", u.Scheme)
+		return nil
+	}
 }

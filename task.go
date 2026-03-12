@@ -217,8 +217,13 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 		// Lock tasks that have fingerprint state (sources + generates).
 		// The lock covers deps, fingerprint check, execution, and
 		// SetUpToDate to prevent races between concurrent processes.
+		// If cache.lock is configured, use the remote locker instead.
 		if !e.Dry && len(t.Sources) > 0 && len(t.Generates) > 0 {
-			unlock, err := e.Locker.Lock(t.Name(), func() {
+			locker := e.Locker
+			if cacheLocker := e.evalCacheLocker(ctx, t); cacheLocker != nil {
+				locker = cacheLocker
+			}
+			unlock, err := locker.Lock(t.Name(), func() {
 				e.Logger.Errf(logger.Yellow, "task: waiting for lock on %q\n", t.Name())
 			})
 			if err != nil {
