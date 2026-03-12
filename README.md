@@ -12,6 +12,18 @@ Source: [github.com/wallix/task](https://github.com/wallix/task)
 - **Timestamp fingerprinting** -- only checksum-based fingerprinting remains. The `method` field on tasks is removed.
 - **`none` fingerprint method** -- tasks either use checksum fingerprinting or have no `sources`.
 
+### Added
+
+#### `--status` flag
+
+Show fingerprint status of tasks without running them:
+
+```bash
+task --status build           # human-readable
+task --status --json build    # machine-readable
+```
+
 ### Improved
 
 - **Richer fingerprints** -- checksums now include serialized commands and variable data, not just file contents.
+- **Separate staleness reporting** -- `sources` and `generates` staleness is tracked and reported independently.

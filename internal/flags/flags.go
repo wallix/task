@@ -61,6 +61,7 @@ var (
 	DisableFuzzy bool
 	AssumeYes    bool
 	Dry          bool
+	Status       bool
 	Summary      bool
 	ExitCode     bool
 	Parallel     bool
@@ -123,6 +124,7 @@ func init() {
 	pflag.BoolVar(&Interactive, "interactive", getConfig(config, "INTERACTIVE", func() *bool { return config.Interactive }, false), "Prompt for missing required variables.")
 	pflag.BoolVarP(&Parallel, "parallel", "p", false, "Executes tasks provided on command line in parallel.")
 	pflag.BoolVarP(&Dry, "dry", "n", getConfig(config, "DRY", func() *bool { return nil }, false), "Compiles and prints tasks in the order that they would be run, without executing them.")
+	pflag.BoolVar(&Status, "status", false, "Show fingerprint status of the given task(s).")
 	pflag.BoolVar(&Summary, "summary", false, "Show summary about a task.")
 	pflag.BoolVarP(&ExitCode, "exit-code", "x", false, "Pass-through the exit code of the task command.")
 	pflag.StringVarP(&Dir, "dir", "d", "", "Sets the directory in which Task will execute and look for a Taskfile.")
@@ -193,8 +195,8 @@ func Validate() error {
 		return errors.New("task: cannot use --list and --list-all at the same time")
 	}
 
-	if ListJson && !List && !ListAll {
-		return errors.New("task: --json only applies to --list or --list-all")
+	if ListJson && !List && !ListAll && !Status {
+		return errors.New("task: --json only applies to --list, --list-all, or --status")
 	}
 
 	if Nested && !ListJson {

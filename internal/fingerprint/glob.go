@@ -12,7 +12,7 @@ import (
 func Globs(dir string, globs []*ast.Glob) ([]string, error) {
 	resultMap := make(map[string]bool)
 	for _, g := range globs {
-		matches, err := glob(dir, g.Glob)
+		matches, err := Glob(dir, g.Glob)
 		if err != nil {
 			continue
 		}
@@ -23,7 +23,7 @@ func Globs(dir string, globs []*ast.Glob) ([]string, error) {
 	return collectKeys(resultMap), nil
 }
 
-func glob(dir string, g string) ([]string, error) {
+func Glob(dir string, g string) ([]string, error) {
 	g = filepathext.SmartJoin(dir, g)
 
 	fs, err := execext.ExpandFields(g)

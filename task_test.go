@@ -2,6 +2,7 @@ package task_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -474,6 +475,128 @@ func TestStatusChecksum(t *testing.T) { // nolint:paralleltest // cannot run in 
 			assert.Equal(t, time, s.ModTime())
 		})
 	}
+}
+
+func TestStatusCommand(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    cmds:
+      - cp source.txt generated.txt
+    sources:
+      - source.txt
+    generates:
+      - generated.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Before running: task should not be up to date
+	require.NoError(t, e.Status(&task.Call{Task: "build"}))
+	out := buff.String()
+	assert.Contains(t, out, "is not up to date")
+	assert.Contains(t, out, "sources: changed")
+	assert.Contains(t, out, "generates: changed")
+	assert.Contains(t, out, "src:")
+	assert.Contains(t, out, "data:")
+
+	// Run the task
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// After running: both sources and generates should be up to date
+	buff.Reset()
+	require.NoError(t, e.Status(&task.Call{Task: "build"}))
+	out = buff.String()
+	assert.Contains(t, out, "is up to date")
+	assert.Contains(t, out, "sources: up to date")
+	assert.Contains(t, out, "generates: up to date")
+}
+
+func TestStatusCommandJSON(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    cmds:
+      - cp source.txt generated.txt
+    sources:
+      - source.txt
+    generates:
+      - generated.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Before running
+	require.NoError(t, e.StatusJSON(&task.Call{Task: "build"}))
+	var result []map[string]any
+	require.NoError(t, json.Unmarshal(buff.Bytes(), &result))
+	require.Len(t, result, 1)
+	assert.Equal(t, "build", result[0]["task"])
+	assert.Equal(t, false, result[0]["up_to_date"])
+	assert.Equal(t, false, result[0]["sources_up_to_date"])
+	assert.Equal(t, false, result[0]["generates_up_to_date"])
+	assert.NotEmpty(t, result[0]["checksum_file"])
+	assert.NotEmpty(t, result[0]["source_data"])
+
+	// Run the task
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// After running
+	buff.Reset()
+	require.NoError(t, e.StatusJSON(&task.Call{Task: "build"}))
+	require.NoError(t, json.Unmarshal(buff.Bytes(), &result))
+	assert.Equal(t, true, result[0]["up_to_date"])
+	assert.Equal(t, true, result[0]["sources_up_to_date"])
+	assert.Equal(t, true, result[0]["generates_up_to_date"])
+	assert.NotEmpty(t, result[0]["sources_hash"])
+	assert.NotEmpty(t, result[0]["generates_hash"])
+}
+
+func TestStatusCommandNoSources(t *testing.T) {
+	t.Parallel()
+
+	const dir = "testdata/vars"
+
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{
+			Fingerprint: filepathext.SmartJoin(dir, ".task"),
+		}),
+	)
+	require.NoError(t, e.Setup())
+
+	buff.Reset()
+	require.NoError(t, e.Status(&task.Call{Task: "default"}))
+	assert.Contains(t, buff.String(), "has no sources or generates")
 }
 
 func TestCmdsVariables(t *testing.T) {

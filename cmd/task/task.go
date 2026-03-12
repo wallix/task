@@ -186,6 +186,13 @@ func run() error {
 		e.InterceptInterruptSignals()
 	}
 
+	if flags.Status {
+		if flags.ListJson {
+			return e.StatusJSON(calls...)
+		}
+		return e.Status(calls...)
+	}
+
 	ctx := context.Background()
 
 	return e.Run(ctx, calls...)
