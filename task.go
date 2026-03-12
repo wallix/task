@@ -165,7 +165,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 	if strings.TrimSpace(t.If) != "" {
 		if err := execext.RunCommand(ctx, &execext.RunCommandOptions{
 			Command: t.If,
-			Dir:     t.Dir,
+			Dir:     t.ComputeDir(),
 			Env:     env.Get(t),
 		}); err != nil {
 			e.Logger.VerboseOutf(logger.Yellow, "task: if condition not met - skipped: %q\n", call.Task)
@@ -253,7 +253,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 		}
 
 		if err := e.mkdir(t); err != nil {
-			e.Logger.Errf(logger.Red, "task: cannot make directory %q: %v\n", t.Dir, err)
+			e.Logger.Errf(logger.Red, "task: cannot make directory %q: %v\n", t.ComputeDir(), err)
 		}
 
 		var deferredExitCode uint8
@@ -296,7 +296,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 }
 
 func (e *Executor) mkdir(t *ast.Task) error {
-	if t.Dir == "" {
+	if t.ComputeDir() == "" {
 		return nil
 	}
 
@@ -304,8 +304,8 @@ func (e *Executor) mkdir(t *ast.Task) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	if _, err := os.Stat(t.Dir); os.IsNotExist(err) {
-		if err := os.MkdirAll(t.Dir, 0o755); err != nil {
+	if _, err := os.Stat(t.ComputeDir()); os.IsNotExist(err) {
+		if err := os.MkdirAll(t.ComputeDir(), 0o755); err != nil {
 			return err
 		}
 	}
@@ -363,7 +363,7 @@ func (e *Executor) runCommand(ctx context.Context, t *ast.Task, call *Call, i in
 	if strings.TrimSpace(cmd.If) != "" {
 		if err := execext.RunCommand(ctx, &execext.RunCommandOptions{
 			Command: cmd.If,
-			Dir:     t.Dir,
+			Dir:     t.ComputeDir(),
 			Env:     env.Get(t),
 		}); err != nil {
 			e.Logger.VerboseOutf(logger.Yellow, "task: [%s] if condition not met - skipped\n", t.Name())
@@ -410,7 +410,7 @@ func (e *Executor) runCommand(ctx context.Context, t *ast.Task, call *Call, i in
 
 		err = execext.RunCommand(ctx, &execext.RunCommandOptions{
 			Command:   cmd.Cmd,
-			Dir:       t.Dir,
+			Dir:       t.ComputeDir(),
 			Env:       env.Get(t),
 			PosixOpts: slicesext.UniqueJoin(e.Taskfile.Set, t.Set, cmd.Set),
 			BashOpts:  slicesext.UniqueJoin(e.Taskfile.Shopt, t.Shopt, cmd.Shopt),

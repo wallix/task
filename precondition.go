@@ -17,7 +17,7 @@ func (e *Executor) areTaskPreconditionsMet(ctx context.Context, t *ast.Task) (bo
 	for _, p := range t.Preconditions {
 		err := execext.RunCommand(ctx, &execext.RunCommandOptions{
 			Command: p.Sh,
-			Dir:     t.Dir,
+			Dir:     t.ComputeDir(),
 			Env:     env.Get(t),
 		})
 		if err != nil {

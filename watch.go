@@ -15,7 +15,6 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 
 	"github.com/go-task/task/v3/errors"
-	"github.com/go-task/task/v3/internal/filepathext"
 	"github.com/go-task/task/v3/internal/fingerprint"
 	"github.com/go-task/task/v3/internal/fsnotifyext"
 	"github.com/go-task/task/v3/internal/logger"
@@ -94,7 +93,7 @@ func (e *Executor) watchTasks(calls ...*Call) error {
 							e.Logger.Errf(logger.Red, "%v\n", err)
 							return
 						}
-						baseDir := filepathext.SmartJoin(e.Dir, t.Dir)
+						baseDir := t.ComputeDir()
 						files, err := e.collectSources(calls)
 						if err != nil {
 							e.Logger.Errf(logger.Red, "%v\n", err)
@@ -205,7 +204,7 @@ func (e *Executor) collectSources(calls []*Call) ([]string, error) {
 	var sources []string
 
 	err := e.traverse(calls, func(task *ast.Task) error {
-		files, err := fingerprint.Globs(task.Dir, task.Sources)
+		files, err := fingerprint.Globs(task.ComputeDir(), task.Sources)
 		if err != nil {
 			return err
 		}

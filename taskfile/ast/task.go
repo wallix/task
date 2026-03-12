@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-task/task/v3/errors"
 	"github.com/go-task/task/v3/internal/deepcopy"
+	"github.com/go-task/task/v3/internal/filepathext"
 )
 
 // Task represents a task
@@ -25,7 +26,7 @@ type Task struct {
 	Sources       []*Glob
 	Generates     []*Glob
 	Preconditions []*Precondition
-	Dir           string
+	Dirs          []string
 	Set           []string
 	Shopt         []string
 	Vars          *Vars
@@ -71,6 +72,13 @@ func (t *Task) LocalName() string {
 // Returns false if Silent is nil (not set) or explicitly set to false.
 func (t *Task) IsSilent() bool {
 	return t.Silent != nil && *t.Silent
+}
+
+// ComputeDir resolves the final working directory from the Dirs stack.
+// Dirs accumulates directory components (executor dir, include dir, task dir)
+// and JoinDirs scans right-to-left to find the rightmost absolute path.
+func (t *Task) ComputeDir() string {
+	return filepathext.JoinDirs(t.Dirs)
 }
 
 // WildcardMatch will check if the given string matches the name of the Task and returns any wildcard values.
@@ -173,7 +181,9 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 		t.Sources = task.Sources
 		t.Generates = task.Generates
 		t.Preconditions = task.Preconditions
-		t.Dir = task.Dir
+		if task.Dir != "" {
+			t.Dirs = []string{task.Dir}
+		}
 		t.Set = task.Set
 		t.Shopt = task.Shopt
 		t.Vars = task.Vars
@@ -214,7 +224,7 @@ func (t *Task) DeepCopy() *Task {
 		Sources:              deepcopy.Slice(t.Sources),
 		Generates:            deepcopy.Slice(t.Generates),
 		Preconditions:        deepcopy.Slice(t.Preconditions),
-		Dir:                  t.Dir,
+		Dirs:                 deepcopy.Slice(t.Dirs),
 		Set:                  deepcopy.Slice(t.Set),
 		Shopt:                deepcopy.Slice(t.Shopt),
 		Vars:                 t.Vars.DeepCopy(),
