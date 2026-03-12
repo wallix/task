@@ -187,6 +187,9 @@ func run() error {
 	}
 
 	if flags.Status {
+		if flags.ListJson {
+			return e.StatusJSON(calls...)
+		}
 		return e.Status(calls...)
 	}
 

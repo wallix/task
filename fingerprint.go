@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/go-task/task/v3/internal/fingerprint"
@@ -9,48 +10,89 @@ import (
 
 // Status prints the fingerprint status of the given tasks.
 func (e *Executor) Status(calls ...*Call) error {
+	return e.status(calls, false)
+}
+
+// StatusJSON prints the fingerprint status of the given tasks as JSON.
+func (e *Executor) StatusJSON(calls ...*Call) error {
+	return e.status(calls, true)
+}
+
+func (e *Executor) status(calls []*Call, asJSON bool) error {
 	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
 
-	for i, call := range calls {
+	var statuses []*fingerprint.TaskStatus
+	for _, call := range calls {
 		t, err := e.CompiledTask(call)
 		if err != nil {
 			return err
 		}
 
-		if i > 0 {
-			fmt.Fprintln(e.Logger.Stdout)
-		}
-
 		if len(t.Sources) == 0 && len(t.Generates) == 0 {
-			e.Logger.Outf(logger.Yellow, "task: %q has no sources or generates\n", t.Name())
+			if asJSON {
+				statuses = append(statuses, &fingerprint.TaskStatus{
+					Task: t.Name(),
+				})
+			} else {
+				e.Logger.Outf(logger.Yellow, "task: %q has no sources or generates\n", t.Name())
+			}
 			continue
 		}
 
-		upToDate, _, err := checker.IsUpToDate(t)
+		st, err := checker.Status(t)
 		if err != nil {
 			return err
 		}
+		statuses = append(statuses, st)
+	}
 
-		if upToDate {
-			e.Logger.Outf(logger.Green, "task: %q is up to date\n", t.Name())
-		} else {
-			e.Logger.Outf(logger.Red, "task: %q is not up to date\n", t.Name())
-		}
+	if asJSON {
+		enc := json.NewEncoder(e.Logger.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(statuses)
+	}
 
-		checksumFile, srcHash, srcFiles, srcData, genHash, genFiles := checker.State(t)
-
-		fmt.Fprintf(e.Logger.Stdout, "  checksum file: %s\n", checksumFile)
-		fmt.Fprintf(e.Logger.Stdout, "  sources hash:  %s\n", srcHash)
-		for _, f := range srcFiles {
-			fmt.Fprintf(e.Logger.Stdout, "    src: %s\n", f)
+	for i, st := range statuses {
+		if i > 0 {
+			fmt.Fprintln(e.Logger.Stdout)
 		}
-		for _, d := range srcData {
-			fmt.Fprintf(e.Logger.Stdout, "    data: %s\n", d)
-		}
-		fmt.Fprintf(e.Logger.Stdout, "  generates hash: %s\n", genHash)
-		for _, f := range genFiles {
-			fmt.Fprintf(e.Logger.Stdout, "    gen: %s\n", f)
-		}
+		printStatus(e.Logger, st)
 	}
 	return nil
+}
+
+func printStatus(l *logger.Logger, st *fingerprint.TaskStatus) {
+	if st.ChecksumFile == "" {
+		// Already printed "no sources or generates" above
+		return
+	}
+
+	if st.UpToDate {
+		l.Outf(logger.Green, "task: %q is up to date\n", st.Task)
+	} else {
+		l.Outf(logger.Red, "task: %q is not up to date\n", st.Task)
+	}
+
+	fmt.Fprintf(l.Stdout, "  checksum file: %s\n", st.ChecksumFile)
+
+	if st.SourcesUpToDate {
+		fmt.Fprintf(l.Stdout, "  sources: up to date (hash: %s)\n", st.SourcesHash)
+	} else {
+		fmt.Fprintf(l.Stdout, "  sources: changed (stored hash: %s)\n", st.SourcesHash)
+	}
+	for _, f := range st.SourceFiles {
+		fmt.Fprintf(l.Stdout, "    src: %s\n", f)
+	}
+	for _, d := range st.SourceData {
+		fmt.Fprintf(l.Stdout, "    data: %s\n", d)
+	}
+
+	if st.GeneratesUpToDate {
+		fmt.Fprintf(l.Stdout, "  generates: up to date (hash: %s)\n", st.GeneratesHash)
+	} else {
+		fmt.Fprintf(l.Stdout, "  generates: changed (stored hash: %s)\n", st.GeneratesHash)
+	}
+	for _, f := range st.GenerateFiles {
+		fmt.Fprintf(l.Stdout, "    gen: %s\n", f)
+	}
 }

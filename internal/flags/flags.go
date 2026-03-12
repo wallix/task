@@ -195,8 +195,8 @@ func Validate() error {
 		return errors.New("task: cannot use --list and --list-all at the same time")
 	}
 
-	if ListJson && !List && !ListAll {
-		return errors.New("task: --json only applies to --list or --list-all")
+	if ListJson && !List && !ListAll && !Status {
+		return errors.New("task: --json only applies to --list, --list-all, or --status")
 	}
 
 	if Nested && !ListJson {

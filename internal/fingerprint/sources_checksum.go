@@ -56,6 +56,22 @@ func (checker *ChecksumChecker) filterChecksumData(t *ast.Task) ([]*ast.Glob, []
 	return sources, data
 }
 
+// TaskStatus holds the fingerprint state and up-to-date status for a task.
+type TaskStatus struct {
+	Task             string   `json:"task"`
+	UpToDate         bool     `json:"up_to_date"`
+	SourcesUpToDate  bool     `json:"sources_up_to_date"`
+	GeneratesUpToDate bool    `json:"generates_up_to_date"`
+	ChecksumFile     string   `json:"checksum_file"`
+	SourcesHash      string   `json:"sources_hash,omitempty"`
+	SourceFiles      []string `json:"source_files,omitempty"`
+	SourceData       []string `json:"source_data,omitempty"`
+	GeneratesHash    string   `json:"generates_hash,omitempty"`
+	GenerateFiles    []string `json:"generate_files,omitempty"`
+	// sourcesState is the current sources hash, used by SetUpToDate
+	sourcesState     string
+}
+
 func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, string, error) {
 	if len(t.Sources) == 0 && len(t.Generates) == 0 {
 		return false, "", nil
@@ -79,6 +95,46 @@ func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, string, error) {
 	}
 
 	return oldSourcesHash == newSourcesHash && oldGeneratesHash == newGeneratesHash, newSourcesHash, nil
+}
+
+// Status returns the full fingerprint state for a task including
+// which parts (sources, generates) are up to date.
+func (checker *ChecksumChecker) Status(t *ast.Task) (*TaskStatus, error) {
+	checksumFile := checker.checksumFilePath(t)
+
+	data, _ := os.ReadFile(checksumFile)
+	oldHashes := strings.TrimSpace(string(data))
+	oldSourcesHash, oldGeneratesHash, _ := strings.Cut(oldHashes, "\n")
+
+	sourcesGlobs, srcData := checker.filterChecksumData(t)
+	newSourcesHash, err := checker.checksum(t, sourcesGlobs, srcData)
+	if err != nil {
+		return nil, err
+	}
+	newGeneratesHash, err := checker.checksum(t, t.Generates, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	sourcesFiles, _ := Globs(t.Dir, sourcesGlobs)
+	generates, _ := Globs(t.Dir, t.Generates)
+
+	srcOK := oldSourcesHash == newSourcesHash
+	genOK := oldGeneratesHash == newGeneratesHash
+
+	return &TaskStatus{
+		Task:              t.Name(),
+		UpToDate:          srcOK && genOK,
+		SourcesUpToDate:   srcOK,
+		GeneratesUpToDate: genOK,
+		ChecksumFile:      checksumFile,
+		SourcesHash:       oldSourcesHash,
+		SourceFiles:       sourcesFiles,
+		SourceData:        srcData,
+		GeneratesHash:     oldGeneratesHash,
+		GenerateFiles:     generates,
+		sourcesState:      newSourcesHash,
+	}, nil
 }
 
 func (checker *ChecksumChecker) Value(t *ast.Task) (any, error) {
@@ -122,20 +178,6 @@ func (checker *ChecksumChecker) SetUpToDate(t *ast.Task, sourceHash string) erro
 	}
 
 	return nil
-}
-
-func (checker *ChecksumChecker) State(t *ast.Task) (string, string, []string, []string, string, []string) {
-	checksumFile := checker.checksumFilePath(t)
-
-	data, _ := os.ReadFile(checksumFile)
-	hashes := strings.TrimSpace(string(data))
-	sourcesHash, generatesHash, _ := strings.Cut(hashes, "\n")
-
-	sourcesGlobs, srcData := checker.filterChecksumData(t)
-	sourcesFiles, _ := Globs(t.Dir, sourcesGlobs)
-	generates, _ := Globs(t.Dir, t.Generates)
-
-	return checksumFile, sourcesHash, sourcesFiles, srcData, generatesHash, generates
 }
 
 func (checker *ChecksumChecker) OnError(t *ast.Task) error {
