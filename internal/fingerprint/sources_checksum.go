@@ -124,6 +124,20 @@ func (checker *ChecksumChecker) SetUpToDate(t *ast.Task, sourceHash string) erro
 	return nil
 }
 
+func (checker *ChecksumChecker) State(t *ast.Task) (string, string, []string, []string, string, []string) {
+	checksumFile := checker.checksumFilePath(t)
+
+	data, _ := os.ReadFile(checksumFile)
+	hashes := strings.TrimSpace(string(data))
+	sourcesHash, generatesHash, _ := strings.Cut(hashes, "\n")
+
+	sourcesGlobs, srcData := checker.filterChecksumData(t)
+	sourcesFiles, _ := Globs(t.Dir, sourcesGlobs)
+	generates, _ := Globs(t.Dir, t.Generates)
+
+	return checksumFile, sourcesHash, sourcesFiles, srcData, generatesHash, generates
+}
+
 func (checker *ChecksumChecker) OnError(t *ast.Task) error {
 	if len(t.Sources) == 0 {
 		return nil
