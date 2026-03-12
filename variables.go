@@ -184,7 +184,7 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 	// {{.CHECKSUM}} themselves, so we resolve them after.
 	if len(origTask.Sources) > 0 {
 		new.Cmds = origTask.Cmds
-		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry)
+		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
 
 		value, err := checker.SourceValue(&new)
 		if err != nil {

@@ -181,7 +181,7 @@ func TestRelativePathIndependence(t *testing.T) {
 	createFile(t, dirA, "hello.txt", "hello world")
 	createFile(t, dirB, "hello.txt", "hello world")
 
-	checker := NewChecksumChecker(t.TempDir(), false)
+	checker := NewChecksumChecker(t.TempDir())
 
 	taskA := makeTask("test", dirA,
 		[]*ast.Glob{{Glob: "hello.txt"}},
@@ -204,7 +204,7 @@ func TestCommandStringInclusion(t *testing.T) {
 	dir := t.TempDir()
 	createFile(t, dir, "src.txt", "content")
 
-	checker := NewChecksumChecker(t.TempDir(), false)
+	checker := NewChecksumChecker(t.TempDir())
 	sources := []*ast.Glob{{Glob: filepath.Join(dir, "src.txt")}}
 
 	taskNoCmds := makeTask("test", dir, sources, nil, nil)
@@ -234,7 +234,7 @@ func TestChecksumStability(t *testing.T) {
 	createFile(t, dir, "a.txt", "aaa")
 	createFile(t, dir, "b.txt", "bbb")
 
-	checker := NewChecksumChecker(t.TempDir(), false)
+	checker := NewChecksumChecker(t.TempDir())
 	sources := []*ast.Glob{
 		{Glob: filepath.Join(dir, "a.txt")},
 		{Glob: filepath.Join(dir, "b.txt")},
@@ -256,7 +256,7 @@ func TestSourceRuleChangesInvalidate(t *testing.T) {
 	createFile(t, dir, "data-a.txt", "same content")
 	createFile(t, dir, "data-b.txt", "same content")
 
-	checker := NewChecksumChecker(t.TempDir(), false)
+	checker := NewChecksumChecker(t.TempDir())
 
 	taskA := makeTask("test", dir,
 		[]*ast.Glob{{Glob: "data-a.txt"}},
@@ -279,7 +279,7 @@ func TestGenerateRuleChangesInvalidate(t *testing.T) {
 	dir := t.TempDir()
 	createFile(t, dir, "src.txt", "src")
 
-	checker := NewChecksumChecker(t.TempDir(), false)
+	checker := NewChecksumChecker(t.TempDir())
 	sources := []*ast.Glob{{Glob: filepath.Join(dir, "src.txt")}}
 
 	taskA := makeTask("test", dir, sources,

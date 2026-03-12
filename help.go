@@ -143,7 +143,7 @@ func (e *Executor) ToEditorOutput(tasks []*ast.Task, nested bool) (*editors.Name
 		g.Go(func() error {
 			editorTask := editors.NewTask(tasks[i])
 
-			upToDate, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry).IsUpToDate(tasks[i])
+			upToDate, _, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).IsUpToDate(tasks[i])
 			if err != nil {
 				return err
 			}
