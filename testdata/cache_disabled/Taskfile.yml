@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache:
+      enabled: false
+      url: echo "file://$CACHE_DIR/build-$TASK_CACHE_HASH.zip"
+    cmds:
+      - cp input.txt output.txt

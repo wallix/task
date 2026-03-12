@@ -121,6 +121,7 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		Run:                  templater.Replace(origTask.Run, cache),
 		IncludeVars:          origTask.IncludeVars,
 		IncludedTaskfileVars: origTask.IncludedTaskfileVars,
+		Cache:                origTask.Cache,
 		Platforms:            origTask.Platforms,
 		If:                   templater.Replace(origTask.If, cache),
 		Location:             origTask.Location,

@@ -2954,3 +2954,113 @@ func enableExperimentForTest(t *testing.T, e *experiments.Experiment, val int) {
 	}
 	t.Cleanup(func() { *e = prev })
 }
+
+// copyTestdata copies a testdata fixture directory to a temp dir for tests
+// that modify files. Returns the temp dir path.
+func copyTestdata(t *testing.T, fixture string) string {
+	t.Helper()
+	src := filepath.Join("testdata", fixture)
+	dst := t.TempDir()
+	entries, err := os.ReadDir(src)
+	require.NoError(t, err)
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(src, e.Name()))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dst, e.Name()), data, 0o644))
+	}
+	return dst
+}
+
+func TestCacheRestoreHit(t *testing.T) {
+	dir := copyTestdata(t, "cache")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+
+	// Run once — this populates the cache
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+
+	// Verify cache was saved
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache dir should have one zip")
+
+	// Delete generates and checksum — task is now out-of-date
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	// Run again — should restore from cache, not execute commands
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// File should be restored from cache
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	content, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello\n", string(content))
+
+	// Output should mention cache restore, NOT command execution
+	assert.Contains(t, buff.String(), "restored from cache")
+}
+
+func TestCacheDisabled(t *testing.T) {
+	dir := copyTestdata(t, "cache_disabled")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Cache dir should NOT have been created
+	_, err := os.Stat(cacheDir)
+	assert.True(t, os.IsNotExist(err), "cache dir should not exist when disabled")
+}
+
+func TestCacheEnabledShellCondition(t *testing.T) {
+	dir := copyTestdata(t, "cache_conditional")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Ensure ENABLE_CACHE is not set — condition should fail
+	t.Setenv("ENABLE_CACHE", "")
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Cache should NOT have been used
+	_, err := os.Stat(cacheDir)
+	assert.True(t, os.IsNotExist(err), "cache should not be used when condition fails")
+}

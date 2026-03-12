@@ -233,6 +233,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 
 		var sourceHash string
 		skipFingerprinting := e.ForceAll || (!call.Indirect && e.Force)
+		cacheActive := e.cacheEnabled(ctx, t)
 		if !skipFingerprinting {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -258,6 +259,17 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 					e.Logger.Errf(logger.Magenta, "task: Task %q is up to date\n", name)
 				}
 				return nil
+			}
+
+			// Try to restore from cache before executing commands.
+			// If the cache provides the generates, re-check fingerprint.
+			if cacheActive && !e.Dry && sourceHash != "" {
+				if e.cacheRestore(ctx, t, sourceHash) {
+					if err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).SetUpToDate(t, ""); err != nil {
+						return err
+					}
+					return nil
+				}
 			}
 		}
 
@@ -305,6 +317,9 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 		if !e.Dry {
 			if err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).SetUpToDate(t, sourceHash); err != nil {
 				return err
+			}
+			if cacheActive && sourceHash != "" {
+				e.cacheSave(ctx, t, sourceHash)
 			}
 		}
 		e.Logger.VerboseErrf(logger.Magenta, "task: %q finished\n", call.Task)
