@@ -179,13 +179,18 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		}
 	}
 
+	// Use origTask.Cmds for CHECKSUM so that raw command templates are
+	// hashed (stable across environments). Commands may reference
+	// {{.CHECKSUM}} themselves, so we resolve them after.
 	if len(origTask.Sources) > 0 {
+		new.Cmds = origTask.Cmds
 		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry)
 
-		value, err := checker.Value(&new)
+		value, err := checker.SourceValue(&new)
 		if err != nil {
 			return nil, err
 		}
+		new.Cmds = nil
 		vars.Set(strings.ToUpper(checker.Kind()), ast.Var{Live: value})
 
 		// Adding new variables, requires us to refresh the templaters

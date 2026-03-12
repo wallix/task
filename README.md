@@ -11,3 +11,7 @@ Source: [github.com/wallix/task](https://github.com/wallix/task)
 - **Remote taskfiles** -- `http://` and `git://` includes are no longer supported. Related CLI flags (`--download`, `--offline`, `--insecure`, `--timeout`, `--clear-cache`, `--trusted-hosts`, `--expiry`, `--remote-cache-dir`, `--cacert`, `--cert`, `--cert-key`) have been removed.
 - **Timestamp fingerprinting** -- only checksum-based fingerprinting remains. The `method` field on tasks is removed.
 - **`none` fingerprint method** -- tasks either use checksum fingerprinting or have no `sources`.
+
+### Improved
+
+- **Richer fingerprints** -- checksums now include serialized commands and variable data, not just file contents.

@@ -497,7 +497,7 @@ func TestCmdsVariables(t *testing.T) {
 	require.NoError(t, e.Setup())
 	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build-checksum"}))
 
-	assert.Contains(t, buff.String(), "3e464c4b03f4b65d740e1e130d4d108a")
+	assert.Contains(t, buff.String(), "44f88b429595ccb250265c2d1eca60a0")
 }
 
 func TestCyclicDep(t *testing.T) {
