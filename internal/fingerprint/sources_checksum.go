@@ -1,14 +1,10 @@
 package fingerprint
 
 import (
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/zeebo/xxh3"
 
 	"github.com/go-task/task/v3/internal/filepathext"
 	"github.com/go-task/task/v3/taskfile/ast"
@@ -92,26 +88,7 @@ func (c *ChecksumChecker) checksum(t *ast.Task) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	h := xxh3.New()
-	buf := make([]byte, 128*1024)
-	for _, f := range sources {
-		// also sum the filename, so checksum changes for renaming a file
-		if _, err := io.CopyBuffer(h, strings.NewReader(filepath.Base(f)), buf); err != nil {
-			return "", err
-		}
-		f, err := os.Open(f)
-		if err != nil {
-			return "", err
-		}
-		if _, err = io.CopyBuffer(h, f, buf); err != nil {
-			return "", err
-		}
-		f.Close()
-	}
-
-	hash := h.Sum128()
-	return fmt.Sprintf("%x%x", hash.Hi, hash.Lo), nil
+	return ChecksumFiles(t.Dir, sources, nil)
 }
 
 func (checker *ChecksumChecker) checksumFilePath(t *ast.Task) string {
