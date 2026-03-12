@@ -16,7 +16,7 @@ Source: [github.com/wallix/task](https://github.com/wallix/task)
 
 #### Setup tasks
 
-A new `setup` field runs tasks **unconditionally and sequentially** before deps and fingerprint checks.
+A new `setup` field runs tasks **unconditionally and sequentially** before deps and fingerprint checks. Setup tasks' sources and commands are merged into the parent task's fingerprint.
 
 ```yaml
 tasks:

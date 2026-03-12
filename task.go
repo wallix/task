@@ -15,6 +15,7 @@ import (
 	"github.com/wallix/task/v3/errors"
 	"github.com/wallix/task/v3/internal/env"
 	"github.com/wallix/task/v3/internal/execext"
+	"github.com/wallix/task/v3/internal/filepathext"
 	"github.com/wallix/task/v3/internal/fingerprint"
 	"github.com/wallix/task/v3/internal/logger"
 	"github.com/wallix/task/v3/internal/output"
@@ -209,6 +210,9 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 		if err := e.runSetup(ctx, t); err != nil {
 			return err
 		}
+		if err := e.mergeSetupFingerprints(t); err != nil {
+			return err
+		}
 		if err := e.runDeps(ctx, t); err != nil {
 			return err
 		}
@@ -310,6 +314,43 @@ func (e *Executor) mkdir(t *ast.Task) error {
 	if _, err := os.Stat(t.ComputeDir()); os.IsNotExist(err) {
 		if err := os.MkdirAll(t.ComputeDir(), 0o755); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// mergeSetupFingerprints merges sources, generates, and commands from
+// setup tasks into the parent task's Sources. This ensures that files
+// managed by setup tasks and their command definitions are included in
+// the parent's fingerprint check. Commands are injected as value:
+// entries so that filterChecksumData includes them in the hash.
+// Setup deps with fingerprint: false are skipped.
+func (e *Executor) mergeSetupFingerprints(t *ast.Task) error {
+	for _, s := range t.Setup {
+		if s.Fingerprint != nil && !*s.Fingerprint {
+			continue
+		}
+		setupTask, err := e.CompiledTask(&Call{Task: s.Task, Vars: s.Vars, Indirect: true})
+		if err != nil {
+			return err
+		}
+		setupDir := setupTask.ComputeDir()
+		for _, src := range setupTask.Sources {
+			t.Sources = append(t.Sources, &ast.Glob{
+				Glob:   filepathext.SmartJoin(setupDir, src.Glob),
+				Negate: src.Negate,
+			})
+		}
+		for _, gen := range setupTask.Generates {
+			t.Sources = append(t.Sources, &ast.Glob{
+				Glob:   filepathext.SmartJoin(setupDir, gen.Glob),
+				Negate: gen.Negate,
+			})
+		}
+		for i, cmd := range setupTask.Cmds {
+			t.Sources = append(t.Sources, &ast.Glob{
+				Glob: fmt.Sprintf("value:setup:%s:cmd[%d]:%s", s.Task, i, cmd.Cmd),
+			})
 		}
 	}
 	return nil

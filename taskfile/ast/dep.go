@@ -4,14 +4,16 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/wallix/task/v3/errors"
+	"github.com/wallix/task/v3/internal/deepcopy"
 )
 
 // Dep is a task dependency
 type Dep struct {
-	Task   string
-	For    *For
-	Vars   *Vars
-	Silent bool
+	Task        string
+	For         *For
+	Vars        *Vars
+	Silent      bool
+	Fingerprint *bool
 }
 
 func (d *Dep) DeepCopy() *Dep {
@@ -19,10 +21,11 @@ func (d *Dep) DeepCopy() *Dep {
 		return nil
 	}
 	return &Dep{
-		Task:   d.Task,
-		For:    d.For.DeepCopy(),
-		Vars:   d.Vars.DeepCopy(),
-		Silent: d.Silent,
+		Task:        d.Task,
+		For:         d.For.DeepCopy(),
+		Vars:        d.Vars.DeepCopy(),
+		Silent:      d.Silent,
+		Fingerprint: deepcopy.Scalar(d.Fingerprint),
 	}
 }
 
@@ -39,10 +42,11 @@ func (d *Dep) UnmarshalYAML(node *yaml.Node) error {
 
 	case yaml.MappingNode:
 		var taskCall struct {
-			Task   string
-			For    *For
-			Vars   *Vars
-			Silent bool
+			Task        string
+			For         *For
+			Vars        *Vars
+			Silent      bool
+			Fingerprint *bool `yaml:"fingerprint,omitempty"`
 		}
 		if err := node.Decode(&taskCall); err != nil {
 			return errors.NewTaskfileDecodeError(err, node)
@@ -51,6 +55,7 @@ func (d *Dep) UnmarshalYAML(node *yaml.Node) error {
 		d.For = taskCall.For
 		d.Vars = taskCall.Vars
 		d.Silent = taskCall.Silent
+		d.Fingerprint = deepcopy.Scalar(taskCall.Fingerprint)
 		return nil
 	}
 
