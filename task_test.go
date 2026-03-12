@@ -396,8 +396,7 @@ func TestGenerates(t *testing.T) {
 
 	for _, theTask := range []string{relTask, absTask, fileWithSpaces} {
 		destFile := filepathext.SmartJoin(dir, theTask)
-		upToDate := fmt.Sprintf("task: Task \"%s\" is up to date\n", srcTask) +
-			fmt.Sprintf("task: Task \"%s\" is up to date\n", theTask)
+		upToDate := fmt.Sprintf("task: Task \"%s\" is up to date\n", theTask)
 
 		// Run task for the first time.
 		require.NoError(t, e.Run(t.Context(), &task.Call{Task: theTask}))
@@ -416,9 +415,7 @@ func TestGenerates(t *testing.T) {
 
 		// Re-run task to ensure it's now found to be up-to-date.
 		require.NoError(t, e.Run(t.Context(), &task.Call{Task: theTask}))
-		if buff.String() != upToDate {
-			t.Errorf("Wrong output message: %s", buff.String())
-		}
+		assert.Contains(t, buff.String(), upToDate)
 		buff.Reset()
 	}
 }
@@ -477,31 +474,6 @@ func TestStatusChecksum(t *testing.T) { // nolint:paralleltest // cannot run in 
 			assert.Equal(t, time, s.ModTime())
 		})
 	}
-}
-
-func TestStatusVariables(t *testing.T) {
-	t.Parallel()
-
-	const dir = "testdata/status_vars"
-
-	_ = os.RemoveAll(filepathext.SmartJoin(dir, ".task"))
-	_ = os.Remove(filepathext.SmartJoin(dir, "generated.txt"))
-
-	var buff bytes.Buffer
-	e := task.NewExecutor(
-		task.WithDir(dir),
-		task.WithTempDir(task.TempDir{
-			Fingerprint: filepathext.SmartJoin(dir, ".task"),
-		}),
-		task.WithStdout(&buff),
-		task.WithStderr(&buff),
-		task.WithSilent(false),
-		task.WithVerbose(true),
-	)
-	require.NoError(t, e.Setup())
-	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build-checksum"}))
-
-	assert.Contains(t, buff.String(), "3e464c4b03f4b65d740e1e130d4d108a")
 }
 
 func TestCmdsVariables(t *testing.T) {

@@ -23,7 +23,6 @@ type Taskfile struct {
 	Location string
 	Version  *semver.Version
 	Output   Output
-	Method   string
 	Includes *Includes
 	Set      []string
 	Shopt    []string
@@ -78,7 +77,6 @@ func (tf *Taskfile) UnmarshalYAML(node *yaml.Node) error {
 		var taskfile struct {
 			Version  *semver.Version
 			Output   Output
-			Method   string
 			Includes *Includes
 			Set      []string
 			Shopt    []string
@@ -95,7 +93,6 @@ func (tf *Taskfile) UnmarshalYAML(node *yaml.Node) error {
 		}
 		tf.Version = taskfile.Version
 		tf.Output = taskfile.Output
-		tf.Method = taskfile.Method
 		tf.Includes = taskfile.Includes
 		tf.Set = taskfile.Set
 		tf.Shopt = taskfile.Shopt

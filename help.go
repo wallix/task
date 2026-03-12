@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,17 +22,15 @@ type ListOptions struct {
 	ListOnlyTasksWithDescriptions bool
 	ListAllTasks                  bool
 	FormatTaskListAsJSON          bool
-	NoStatus                      bool
 	Nested                        bool
 }
 
 // NewListOptions creates a new ListOptions instance
-func NewListOptions(list, listAll, listAsJson, noStatus, nested bool) ListOptions {
+func NewListOptions(list, listAll, listAsJson, nested bool) ListOptions {
 	return ListOptions{
 		ListOnlyTasksWithDescriptions: list,
 		ListAllTasks:                  listAll,
 		FormatTaskListAsJSON:          listAsJson,
-		NoStatus:                      noStatus,
 		Nested:                        nested,
 	}
 }
@@ -65,7 +62,7 @@ func (e *Executor) ListTasks(o ListOptions) (bool, error) {
 		return false, err
 	}
 	if o.FormatTaskListAsJSON {
-		output, err := e.ToEditorOutput(tasks, o.NoStatus, o.Nested)
+		output, err := e.ToEditorOutput(tasks, o.Nested)
 		if err != nil {
 			return false, err
 		}
@@ -137,7 +134,7 @@ func (e *Executor) ListTaskNames(allTasks bool) error {
 	return nil
 }
 
-func (e *Executor) ToEditorOutput(tasks []*ast.Task, noStatus bool, nested bool) (*editors.Namespace, error) {
+func (e *Executor) ToEditorOutput(tasks []*ast.Task, nested bool) (*editors.Namespace, error) {
 	var g errgroup.Group
 	editorTasks := make([]editors.Task, len(tasks))
 
@@ -146,16 +143,7 @@ func (e *Executor) ToEditorOutput(tasks []*ast.Task, noStatus bool, nested bool)
 		g.Go(func() error {
 			editorTask := editors.NewTask(tasks[i])
 
-			if noStatus {
-				editorTasks[i] = editorTask
-				return nil
-			}
-
-			upToDate, err := fingerprint.IsTaskUpToDate(context.Background(), tasks[i],
-				fingerprint.WithTempDir(e.TempDir.Fingerprint),
-				fingerprint.WithDry(e.Dry),
-				fingerprint.WithLogger(e.Logger),
-			)
+			upToDate, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry).IsUpToDate(tasks[i])
 			if err != nil {
 				return err
 			}

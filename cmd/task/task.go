@@ -138,7 +138,6 @@ func run() error {
 		flags.List,
 		flags.ListAll,
 		flags.ListJson,
-		flags.NoStatus,
 		flags.Nested,
 	)
 	if listOptions.ShouldListTasks() {
@@ -188,10 +187,6 @@ func run() error {
 	}
 
 	ctx := context.Background()
-
-	if flags.Status {
-		return e.Status(ctx, calls...)
-	}
 
 	return e.Run(ctx, calls...)
 }

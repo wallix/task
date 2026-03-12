@@ -24,7 +24,6 @@ type Task struct {
 	Aliases       []string
 	Sources       []*Glob
 	Generates     []*Glob
-	Status        []string
 	Preconditions []*Precondition
 	Dir           string
 	Set           []string
@@ -35,7 +34,6 @@ type Task struct {
 	Silent        *bool
 	Interactive   bool
 	Internal      bool
-	Method        string
 	Prefix        string `hash:"ignore"`
 	IgnoreError   bool
 	Run           string
@@ -136,7 +134,6 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 			Aliases       []string
 			Sources       []*Glob
 			Generates     []*Glob
-			Status        []string
 			Preconditions []*Precondition
 			Dir           string
 			Set           []string
@@ -147,7 +144,6 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 			Silent        *bool `yaml:"silent,omitempty"`
 			Interactive   bool
 			Internal      bool
-			Method        string
 			Prefix        string
 			IgnoreError   bool `yaml:"ignore_error"`
 			Run           string
@@ -176,7 +172,6 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 		t.Aliases = task.Aliases
 		t.Sources = task.Sources
 		t.Generates = task.Generates
-		t.Status = task.Status
 		t.Preconditions = task.Preconditions
 		t.Dir = task.Dir
 		t.Set = task.Set
@@ -187,7 +182,6 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 		t.Silent = deepcopy.Scalar(task.Silent)
 		t.Interactive = task.Interactive
 		t.Internal = task.Internal
-		t.Method = task.Method
 		t.Prefix = task.Prefix
 		t.IgnoreError = task.IgnoreError
 		t.Run = task.Run
@@ -219,7 +213,6 @@ func (t *Task) DeepCopy() *Task {
 		Aliases:              deepcopy.Slice(t.Aliases),
 		Sources:              deepcopy.Slice(t.Sources),
 		Generates:            deepcopy.Slice(t.Generates),
-		Status:               deepcopy.Slice(t.Status),
 		Preconditions:        deepcopy.Slice(t.Preconditions),
 		Dir:                  t.Dir,
 		Set:                  deepcopy.Slice(t.Set),
@@ -230,7 +223,6 @@ func (t *Task) DeepCopy() *Task {
 		Silent:               deepcopy.Scalar(t.Silent),
 		Interactive:          t.Interactive,
 		Internal:             t.Internal,
-		Method:               t.Method,
 		Prefix:               t.Prefix,
 		IgnoreError:          t.IgnoreError,
 		Run:                  t.Run,
