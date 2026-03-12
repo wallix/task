@@ -476,6 +476,75 @@ func TestStatusChecksum(t *testing.T) { // nolint:paralleltest // cannot run in 
 	}
 }
 
+func TestStatusCommand(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	srcFile := filepath.Join(dir, "source.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("hello"), 0o644))
+
+	taskfile := filepath.Join(dir, "Taskfile.yml")
+	require.NoError(t, os.WriteFile(taskfile, []byte(`version: '3'
+tasks:
+  build:
+    cmds:
+      - cp source.txt generated.txt
+    sources:
+      - source.txt
+    generates:
+      - generated.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Before running: task should not be up to date
+	require.NoError(t, e.Status(&task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "is not up to date")
+	assert.Contains(t, buff.String(), "checksum file:")
+	assert.Contains(t, buff.String(), "sources hash:")
+	assert.Contains(t, buff.String(), "src:")
+	assert.Contains(t, buff.String(), "data:")
+
+	// Run the task
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// After running: should be up to date
+	buff.Reset()
+	require.NoError(t, e.Status(&task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "is up to date")
+	assert.Contains(t, buff.String(), "generates hash:")
+}
+
+func TestStatusCommandNoSources(t *testing.T) {
+	t.Parallel()
+
+	const dir = "testdata/vars"
+
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{
+			Fingerprint: filepathext.SmartJoin(dir, ".task"),
+		}),
+	)
+	require.NoError(t, e.Setup())
+
+	buff.Reset()
+	require.NoError(t, e.Status(&task.Call{Task: "default"}))
+	assert.Contains(t, buff.String(), "has no sources or generates")
+}
+
 func TestCmdsVariables(t *testing.T) {
 	t.Parallel()
 
