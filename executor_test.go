@@ -36,7 +36,6 @@ type (
 		executorOpts    []task.ExecutorOption
 		wantSetupError  bool
 		wantRunError    bool
-		wantStatusError bool
 	}
 )
 
@@ -100,19 +99,6 @@ func (opt *runErrorTestOption) applyToExecutorTest(t *ExecutorTest) {
 	t.wantRunError = true
 }
 
-// WithStatusError tells the test to make an additional call to
-// [task.Executor.Status] after the task has been run. A fixture will be created
-// with the output of any errors.
-func WithStatusError() ExecutorTestOption {
-	return &statusErrorTestOption{}
-}
-
-type statusErrorTestOption struct{}
-
-func (opt *statusErrorTestOption) applyToExecutorTest(t *ExecutorTest) {
-	t.wantStatusError = true
-}
-
 // Helpers
 
 // writeFixtureErrRun is a wrapper for writing the output of an error during the
@@ -124,17 +110,6 @@ func (tt *ExecutorTest) writeFixtureErrRun(
 ) {
 	t.Helper()
 	tt.writeFixture(t, g, "err-run", []byte(err.Error()))
-}
-
-// writeFixtureStatus is a wrapper for writing the output of an error when
-// making an additional call to [task.Executor.Status] to a fixture file.
-func (tt *ExecutorTest) writeFixtureStatus(
-	t *testing.T,
-	g *goldie.Goldie,
-	status string,
-) {
-	t.Helper()
-	tt.writeFixture(t, g, "err-status", []byte(status))
 }
 
 // run is the main function for running the test. It sets up the task executor,
@@ -196,13 +171,6 @@ func (tt *ExecutorTest) run(t *testing.T) {
 			return
 		} else {
 			require.NoError(t, err)
-		}
-
-		// If the status flag is set, run the status check
-		if tt.wantStatusError {
-			if err := e.Status(ctx, call); err != nil {
-				tt.writeFixtureStatus(t, g, err.Error())
-			}
 		}
 
 		tt.writeFixtureBuffer(t, g, buffer.buf)
@@ -667,29 +635,12 @@ func TestLabel(t *testing.T) {
 	t.Parallel()
 
 	NewExecutorTest(t,
-		WithName("up to date"),
-		WithExecutorOptions(
-			task.WithDir("testdata/label_uptodate"),
-		),
-		WithTask("foo"),
-	)
-
-	NewExecutorTest(t,
 		WithName("summary"),
 		WithExecutorOptions(
 			task.WithDir("testdata/label_summary"),
 			task.WithSummary(true),
 		),
 		WithTask("foo"),
-	)
-
-	NewExecutorTest(t,
-		WithName("status"),
-		WithExecutorOptions(
-			task.WithDir("testdata/label_status"),
-		),
-		WithTask("foo"),
-		WithStatusError(),
 	)
 
 	NewExecutorTest(t,
@@ -715,27 +666,6 @@ func TestLabel(t *testing.T) {
 		),
 		WithTask("foo"),
 		WithRunError(),
-	)
-}
-
-func TestPrefix(t *testing.T) {
-	t.Parallel()
-
-	NewExecutorTest(t,
-		WithName("up to date"),
-		WithExecutorOptions(
-			task.WithDir("testdata/prefix_uptodate"),
-			task.WithOutputStyle(ast.Output{Name: "prefixed"}),
-		),
-		WithTask("foo"),
-	)
-
-	NewExecutorTest(t,
-		WithName("up to dat with no output style"),
-		WithExecutorOptions(
-			task.WithDir("testdata/prefix_uptodate"),
-		),
-		WithTask("foo"),
 	)
 }
 

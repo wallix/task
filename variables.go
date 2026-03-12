@@ -61,7 +61,6 @@ func (e *Executor) CompiledTaskForTaskList(call *Call) (*ast.Task, error) {
 		Silent:               deepcopy.Scalar(origTask.Silent),
 		Interactive:          origTask.Interactive,
 		Internal:             origTask.Internal,
-		Method:               origTask.Method,
 		Prefix:               origTask.Prefix,
 		IgnoreError:          origTask.IgnoreError,
 		Run:                  origTask.Run,
@@ -117,7 +116,6 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		Silent:               deepcopy.Scalar(origTask.Silent),
 		Interactive:          origTask.Interactive,
 		Internal:             origTask.Internal,
-		Method:               templater.Replace(origTask.Method, cache),
 		Prefix:               templater.Replace(origTask.Prefix, cache),
 		IgnoreError:          origTask.IgnoreError,
 		Run:                  templater.Replace(origTask.Run, cache),
@@ -295,10 +293,6 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 			newPrecondition.Msg = templater.Replace(precondition.Msg, cache)
 			new.Preconditions = append(new.Preconditions, newPrecondition)
 		}
-	}
-
-	if len(origTask.Status) > 0 {
-		new.Status = templater.Replace(origTask.Status, cache)
 	}
 
 	// We only care about templater errors if we are evaluating shell variables

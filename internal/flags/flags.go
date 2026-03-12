@@ -52,8 +52,6 @@ var (
 	ListAll      bool
 	ListJson     bool
 	TaskSort     string
-	Status       bool
-	NoStatus     bool
 	Nested       bool
 	Force        bool
 	ForceAll     bool
@@ -116,8 +114,6 @@ func init() {
 	pflag.BoolVarP(&ListAll, "list-all", "a", false, "Lists tasks with or without a description.")
 	pflag.BoolVarP(&ListJson, "json", "j", false, "Formats task list as JSON.")
 	pflag.StringVar(&TaskSort, "sort", "", "Changes the order of the tasks when listed. [default|alphanumeric|none].")
-	pflag.BoolVar(&Status, "status", false, "Exits with non-zero exit code if any of the given tasks is not up-to-date.")
-	pflag.BoolVar(&NoStatus, "no-status", false, "Ignore status when listing tasks as JSON")
 	pflag.BoolVar(&Nested, "nested", false, "Nest namespaces when listing tasks as JSON")
 	pflag.BoolVarP(&Watch, "watch", "w", false, "Enables watch of the given task.")
 	pflag.BoolVarP(&Verbose, "verbose", "v", getConfig(config, "VERBOSE", func() *bool { return config.Verbose }, false), "Enables verbose mode.")
@@ -201,10 +197,6 @@ func Validate() error {
 		return errors.New("task: --json only applies to --list or --list-all")
 	}
 
-	if NoStatus && !ListJson {
-		return errors.New("task: --no-status only applies to --json with --list or --list-all")
-	}
-
 	if Nested && !ListJson {
 		return errors.New("task: --nested only applies to --json with --list or --list-all")
 	}
@@ -250,7 +242,7 @@ func (o *flagsOption) ApplyToExecutor(e *task.Executor) {
 		task.WithDisableFuzzy(DisableFuzzy),
 		task.WithAssumeYes(AssumeYes),
 		task.WithInteractive(Interactive),
-		task.WithDry(Dry || Status),
+		task.WithDry(Dry),
 		task.WithSummary(Summary),
 		task.WithParallel(Parallel),
 		task.WithColor(Color),

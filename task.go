@@ -221,11 +221,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 				return err
 			}
 
-			upToDate, err := fingerprint.IsTaskUpToDate(ctx, t,
-				fingerprint.WithTempDir(e.TempDir.Fingerprint),
-				fingerprint.WithDry(e.Dry),
-				fingerprint.WithLogger(e.Logger),
-			)
+			upToDate, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry).IsUpToDate(t)
 			if err != nil {
 				return err
 			}
@@ -267,7 +263,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			}
 
 			if err := e.runCommand(ctx, t, call, i); err != nil {
-				if err2 := e.statusOnError(t); err2 != nil {
+				if err2 := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry).OnError(t); err2 != nil {
 					e.Logger.VerboseErrf(logger.Yellow, "task: error cleaning status on error: %v\n", err2)
 				}
 
