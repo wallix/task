@@ -210,6 +210,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			return err
 		}
 
+		var sourceHash string
 		skipFingerprinting := e.ForceAll || (!call.Indirect && e.Force)
 		if !skipFingerprinting {
 			if err := ctx.Err(); err != nil {
@@ -221,7 +222,8 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 				return err
 			}
 
-			upToDate, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry).IsUpToDate(t)
+			var upToDate bool
+			upToDate, sourceHash, err = fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).IsUpToDate(t)
 			if err != nil {
 				return err
 			}
@@ -263,7 +265,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			}
 
 			if err := e.runCommand(ctx, t, call, i); err != nil {
-				if err2 := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry).OnError(t); err2 != nil {
+				if err2 := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).OnError(t); err2 != nil {
 					e.Logger.VerboseErrf(logger.Yellow, "task: error cleaning status on error: %v\n", err2)
 				}
 
@@ -276,6 +278,11 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 					deferredExitCode = uint8(exitCode)
 				}
 
+				return err
+			}
+		}
+		if !e.Dry {
+			if err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).SetUpToDate(t, sourceHash); err != nil {
 				return err
 			}
 		}

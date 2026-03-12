@@ -180,7 +180,7 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 	}
 
 	if len(origTask.Sources) > 0 {
-		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, e.Dry)
+		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
 
 		value, err := checker.Value(&new)
 		if err != nil {
