@@ -213,6 +213,20 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 		if err := e.mergeSetupFingerprints(t); err != nil {
 			return err
 		}
+
+		// Lock tasks that have fingerprint state (sources + generates).
+		// The lock covers deps, fingerprint check, execution, and
+		// SetUpToDate to prevent races between concurrent processes.
+		if !e.Dry && len(t.Sources) > 0 && len(t.Generates) > 0 {
+			unlock, err := e.Locker.Lock(t.Name(), func() {
+				e.Logger.Errf(logger.Yellow, "task: waiting for lock on %q\n", t.Name())
+			})
+			if err != nil {
+				return err
+			}
+			defer unlock.Unlock()
+		}
+
 		if err := e.runDeps(ctx, t); err != nil {
 			return err
 		}

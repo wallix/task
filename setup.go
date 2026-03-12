@@ -16,6 +16,7 @@ import (
 	"github.com/go-task/task/v3/internal/env"
 	"github.com/go-task/task/v3/internal/execext"
 	"github.com/go-task/task/v3/internal/filepathext"
+	"github.com/go-task/task/v3/internal/lock"
 	"github.com/go-task/task/v3/internal/logger"
 	"github.com/go-task/task/v3/internal/output"
 	"github.com/go-task/task/v3/internal/version"
@@ -50,6 +51,9 @@ func (e *Executor) Setup() error {
 	}
 	e.setupDefaults()
 	e.setupConcurrencyState()
+	if err := e.setupLocker(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -240,6 +244,18 @@ func (e *Executor) setupConcurrencyState() {
 	if e.Concurrency > 0 {
 		e.concurrencySemaphore = make(chan struct{}, e.Concurrency)
 	}
+}
+
+func (e *Executor) setupLocker() error {
+	if e.Locker != nil {
+		return nil
+	}
+	locker, err := lock.NewFlock(filepath.Join(e.TempDir.Fingerprint, "locks"))
+	if err != nil {
+		return err
+	}
+	e.Locker = locker
+	return nil
 }
 
 func (e *Executor) doVersionChecks() error {
