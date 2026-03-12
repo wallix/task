@@ -10,7 +10,6 @@ import (
 type (
 	CheckerOption func(*CheckerConfig)
 	CheckerConfig struct {
-		method         string
 		dry            bool
 		tempDir        string
 		logger         *logger.Logger
@@ -18,12 +17,6 @@ type (
 		sourcesChecker SourcesCheckable
 	}
 )
-
-func WithMethod(method string) CheckerOption {
-	return func(config *CheckerConfig) {
-		config.method = method
-	}
-}
 
 func WithDry(dry bool) CheckerOption {
 	return func(config *CheckerConfig) {
@@ -66,7 +59,6 @@ func IsTaskUpToDate(
 
 	// Default config
 	config := &CheckerConfig{
-		method:         "none",
 		tempDir:        "",
 		dry:            false,
 		logger:         nil,
@@ -86,10 +78,7 @@ func IsTaskUpToDate(
 
 	// If no sources checker was given, set up the default one
 	if config.sourcesChecker == nil {
-		config.sourcesChecker, err = NewSourcesChecker(config.method, config.tempDir, config.dry)
-		if err != nil {
-			return false, err
-		}
+		config.sourcesChecker = NewSourcesChecker(config.tempDir, config.dry)
 	}
 
 	statusIsSet := len(t.Status) != 0

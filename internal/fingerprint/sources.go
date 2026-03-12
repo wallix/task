@@ -1,14 +1,5 @@
 package fingerprint
 
-import "fmt"
-
-func NewSourcesChecker(method, tempDir string, dry bool) (SourcesCheckable, error) {
-	switch method {
-	case "checksum":
-		return NewChecksumChecker(tempDir, dry), nil
-	case "none":
-		return NoneChecker{}, nil
-	default:
-		return nil, fmt.Errorf(`task: invalid method "%s"`, method)
-	}
+func NewSourcesChecker(tempDir string, dry bool) SourcesCheckable {
+	return NewChecksumChecker(tempDir, dry)
 }
