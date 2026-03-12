@@ -1007,6 +1007,41 @@ tasks:
 	assert.Contains(t, buff.String(), "unmodified")
 }
 
+func TestGeneratesWithoutSourcesAlwaysRuns(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    generates:
+      - output.txt
+    cmds:
+      - echo hello > output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+
+	run := func() {
+		var buff bytes.Buffer
+		e := task.NewExecutor(
+			task.WithDir(dir),
+			task.WithStdout(&buff),
+			task.WithStderr(&buff),
+			task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+		)
+		require.NoError(t, e.Setup())
+		require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+		assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	}
+
+	// Tasks with generates but no sources have no fingerprint baseline,
+	// so they always execute — even on the second run.
+	run()
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	run()
+}
+
 func TestCmdsVariables(t *testing.T) {
 	t.Parallel()
 

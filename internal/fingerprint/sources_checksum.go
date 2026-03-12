@@ -73,7 +73,7 @@ type TaskStatus struct {
 }
 
 func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, string, error) {
-	if len(t.Sources) == 0 && len(t.Generates) == 0 {
+	if len(t.Sources) == 0 {
 		return false, "", nil
 	}
 
@@ -146,7 +146,7 @@ func (checker *ChecksumChecker) SourceValue(t *ast.Task) (string, error) {
 }
 
 func (checker *ChecksumChecker) SetUpToDate(t *ast.Task, sourceHash string) error {
-	if len(t.Sources) == 0 && len(t.Generates) == 0 {
+	if len(t.Sources) == 0 {
 		return nil
 	}
 
