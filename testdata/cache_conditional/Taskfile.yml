@@ -1,0 +1,19 @@
+version: '3'
+
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+  ENABLE_CACHE:
+    sh: echo "$ENABLE_CACHE"
+
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache:
+      enabled: '{{ne .ENABLE_CACHE ""}}'
+      url: 'file://{{.CACHE_DIR}}/build-{{.CHECKSUM}}.zip'
+    cmds:
+      - cp input.txt output.txt

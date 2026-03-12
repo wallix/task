@@ -1,0 +1,17 @@
+version: '3'
+
+caches:
+  broken:
+    enabled: false
+    url: 'redis://nonexistent-host:6379/cache:test-{{.CHECKSUM}}.zip'
+    lock: 'redis://nonexistent-host:6379/lock:test-{{.CHECKSUM}}'
+
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache: broken
+    cmds:
+      - cp input.txt output.txt

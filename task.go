@@ -213,12 +213,39 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 		if err := e.mergeSetupFingerprints(t); err != nil {
 			return err
 		}
+
+		// Lock tasks that have fingerprint state (sources + generates).
+		// The lock covers deps, fingerprint check, execution, and
+		// SetUpToDate to prevent races between concurrent processes.
+		// If cache.lock is configured, use the remote locker instead.
+		if !e.Dry && len(t.Sources) > 0 && len(t.Generates) > 0 {
+			locker := e.Locker
+			if e.cacheEnabled(t) {
+				if cacheLocker := e.evalCacheLocker(t); cacheLocker != nil {
+					locker = cacheLocker
+				}
+			}
+			onContention := func() {
+				e.Logger.Errf(logger.Yellow, "task: waiting for lock on %q\n", t.Name())
+			}
+			unlock, err := locker.Lock(t.Name(), onContention)
+			if err != nil && locker != e.Locker {
+				e.Logger.VerboseErrf(logger.Yellow, "task: remote lock failed for %q: %v (falling back to local)\n", t.Name(), err)
+				unlock, err = e.Locker.Lock(t.Name(), onContention)
+			}
+			if err != nil {
+				return err
+			}
+			defer func() { _ = unlock.Unlock() }()
+		}
+
 		if err := e.runDeps(ctx, t); err != nil {
 			return err
 		}
 
 		var sourceHash string
 		skipFingerprinting := e.ForceAll || (!call.Indirect && e.Force)
+		cacheActive := e.cacheEnabled(t)
 		if !skipFingerprinting {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -244,6 +271,17 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 					e.Logger.Errf(logger.Magenta, "task: Task %q is up to date\n", name)
 				}
 				return nil
+			}
+
+			// Try to restore from cache before executing commands.
+			// If the cache provides the generates, re-check fingerprint.
+			if cacheActive && !e.Dry && sourceHash != "" {
+				if e.cacheRestore(t) {
+					if err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).SetUpToDate(t, ""); err != nil {
+						return err
+					}
+					return nil
+				}
 			}
 		}
 
@@ -291,6 +329,9 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 		if !e.Dry {
 			if err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).SetUpToDate(t, sourceHash); err != nil {
 				return err
+			}
+			if cacheActive && sourceHash != "" {
+				e.cacheSave(t)
 			}
 		}
 		e.Logger.VerboseErrf(logger.Magenta, "task: %q finished\n", call.Task)

@@ -1,0 +1,21 @@
+version: '3'
+
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+
+caches:
+  default:
+    url: 'redis://should-not-be-used/{{.CHECKSUM}}'
+
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache:
+      inherit: default
+      url: 'file://{{.CACHE_DIR}}/build-{{.CHECKSUM}}.zip'
+    cmds:
+      - cp input.txt output.txt

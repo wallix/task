@@ -29,7 +29,7 @@ func createFile(t *testing.T, dir, name, content string) string {
 func makeTask(name, dir string, sources, generates []*ast.Glob, cmds []*ast.Cmd) *ast.Task {
 	return &ast.Task{
 		Task:      name,
-		Dir:       dir,
+		Dirs:      []string{dir},
 		Sources:   sources,
 		Generates: generates,
 		Cmds:      cmds,

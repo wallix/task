@@ -121,6 +121,7 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		Run:                  templater.Replace(origTask.Run, cache),
 		IncludeVars:          origTask.IncludeVars,
 		IncludedTaskfileVars: origTask.IncludedTaskfileVars,
+		Cache:                nil, // resolved below after CHECKSUM is available
 		Platforms:            origTask.Platforms,
 		If:                   templater.Replace(origTask.If, cache),
 		Location:             origTask.Location,
@@ -198,6 +199,36 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		// Adding new variables, requires us to refresh the templaters
 		// cache of the the values manually
 		cache.ResetCache()
+	}
+
+	// Resolve cache fields after CHECKSUM is available so that
+	// {{ .CHECKSUM }}, {{ .TASK }}, {{ urlsafe .TASK }} etc. work.
+	if origTask.Cache != nil {
+		resolved := origTask.Cache.DeepCopy()
+		// Inherit from a named cache model, then overlay task-level fields.
+		if resolved.Inherit != "" {
+			if model, ok := e.Taskfile.Caches[resolved.Inherit]; ok && model != nil {
+				merged := model.DeepCopy()
+				if resolved.URL != "" {
+					merged.URL = resolved.URL
+				}
+				if resolved.Lock != "" {
+					merged.Lock = resolved.Lock
+				}
+				if resolved.If != "" {
+					merged.If = resolved.If
+				}
+				if resolved.Enabled != nil {
+					merged.Enabled = resolved.Enabled
+				}
+				resolved = merged
+			}
+		}
+		resolved.Inherit = ""
+		resolved.URL = templater.Replace(resolved.URL, cache)
+		resolved.Lock = templater.Replace(resolved.Lock, cache)
+		resolved.If = templater.Replace(resolved.If, cache)
+		new.Cache = resolved
 	}
 
 	if len(origTask.Cmds) > 0 {

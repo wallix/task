@@ -26,6 +26,7 @@ type Task struct {
 	Aliases       []string
 	Sources       []*Glob
 	Generates     []*Glob
+	Cache         *Cache
 	Preconditions []*Precondition
 	Dirs          []string
 	Set           []string
@@ -144,6 +145,7 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 			Aliases       []string
 			Sources       []*Glob
 			Generates     []*Glob
+			Cache         *Cache
 			Preconditions []*Precondition
 			Dir           string
 			Set           []string
@@ -183,6 +185,7 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 		t.Aliases = task.Aliases
 		t.Sources = task.Sources
 		t.Generates = task.Generates
+		t.Cache = task.Cache
 		t.Preconditions = task.Preconditions
 		if task.Dir != "" {
 			t.Dirs = []string{task.Dir}
@@ -227,6 +230,7 @@ func (t *Task) DeepCopy() *Task {
 		Aliases:              deepcopy.Slice(t.Aliases),
 		Sources:              deepcopy.Slice(t.Sources),
 		Generates:            deepcopy.Slice(t.Generates),
+		Cache:                t.Cache.DeepCopy(),
 		Preconditions:        deepcopy.Slice(t.Preconditions),
 		Dirs:                 deepcopy.Slice(t.Dirs),
 		Set:                  deepcopy.Slice(t.Set),

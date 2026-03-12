@@ -2962,6 +2962,381 @@ func enableExperimentForTest(t *testing.T, e *experiments.Experiment, val int) {
 	t.Cleanup(func() { *e = prev })
 }
 
+// copyTestdata copies a testdata fixture directory to a temp dir for tests
+// that modify files. Returns the temp dir path.
+func copyTestdata(t *testing.T, fixture string) string {
+	t.Helper()
+	src := filepath.Join("testdata", fixture)
+	dst := t.TempDir()
+	entries, err := os.ReadDir(src)
+	require.NoError(t, err)
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(src, e.Name()))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dst, e.Name()), data, 0o644))
+	}
+	return dst
+}
+
+func TestCacheRestoreHit(t *testing.T) {
+	dir := copyTestdata(t, "cache")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+
+	// Run once — this populates the cache
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+
+	// Verify cache was saved
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache dir should have one zip")
+
+	// Delete generates and checksum — task is now out-of-date
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	// Run again — should restore from cache, not execute commands
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// File should be restored from cache
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	content, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello\n", string(content))
+
+	// Output should mention cache restore, NOT command execution
+	assert.Contains(t, buff.String(), "restored from cache")
+}
+
+func TestCacheDisabled(t *testing.T) {
+	dir := copyTestdata(t, "cache_disabled")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Cache dir should NOT have been created
+	_, err := os.Stat(cacheDir)
+	assert.True(t, os.IsNotExist(err), "cache dir should not exist when disabled")
+}
+
+func TestCacheDisabledSkipsLocker(t *testing.T) {
+	t.Parallel()
+	// Regression: evalCacheLocker must not be called when cache is disabled.
+	// The lock URL points to a nonexistent host — if the locker is evaluated,
+	// the test will fail with a connection error.
+	dir := copyTestdata(t, "cache_disabled_with_lock")
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Task should have run successfully without trying to connect to Redis
+	output := filepath.Join(dir, "output.txt")
+	_, err := os.Stat(output)
+	assert.NoError(t, err, "output.txt should exist after successful run")
+}
+
+func TestCacheEnabledShellCondition(t *testing.T) {
+	dir := copyTestdata(t, "cache_conditional")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Ensure ENABLE_CACHE is not set — condition should fail
+	t.Setenv("ENABLE_CACHE", "")
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Cache should NOT have been used
+	_, err := os.Stat(cacheDir)
+	assert.True(t, os.IsNotExist(err), "cache should not be used when condition fails")
+}
+
+func TestCacheEnabledConditionTrue(t *testing.T) {
+	// When the cache condition evaluates to true, the cache should be used.
+	dir := copyTestdata(t, "cache_conditional")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+	t.Setenv("ENABLE_CACHE", "1")
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Cache dir should have been created
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache should be used when condition is true")
+
+	// Delete generates and checksum to force cache restore
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "build"}))
+
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	assert.Contains(t, buff.String(), "restored from cache")
+}
+
+func TestChecksumIncludesRawCommands(t *testing.T) {
+	// Regression: CHECKSUM must include raw command template strings so that
+	// changing a command invalidates the fingerprint. The raw templates
+	// (before variable resolution) are hashed, ensuring stability across
+	// environments while still detecting command changes.
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    sources:
+      - source.txt
+    cmds:
+      - echo "{{.CHECKSUM}}" > output.txt
+    generates:
+      - output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// CHECKSUM should be non-empty in the generated output
+	output, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	checksum := strings.TrimSpace(string(output))
+	assert.NotEmpty(t, checksum, "CHECKSUM should be resolved in commands")
+	assert.Regexp(t, `^[0-9a-f]+$`, checksum, "CHECKSUM should be a hex string")
+
+	// Now change the command and verify CHECKSUM changes
+	require.NoError(t, os.RemoveAll(tempDir))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    sources:
+      - source.txt
+    cmds:
+      - echo "different-cmd {{.CHECKSUM}}" > output.txt
+    generates:
+      - output.txt
+`), 0o644))
+
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "build"}))
+
+	output2, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	// Extract just the hex checksum from "different-cmd <hex>"
+	parts := strings.Fields(strings.TrimSpace(string(output2)))
+	require.True(t, len(parts) >= 2, "expected 'different-cmd <checksum>' in output")
+	checksum2 := parts[len(parts)-1]
+
+	assert.NotEqual(t, checksum, checksum2,
+		"CHECKSUM should change when command template changes")
+}
+
+func TestFlockSerializesParallelTasks(t *testing.T) {
+	// Verify that two concurrent invocations of the same fingerprinted task
+	// are serialized by the filesystem lock.
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	// The task writes start/end markers with a small sleep in between.
+	// If locking works, the markers will be interleaved correctly.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    sources:
+      - source.txt
+    generates:
+      - output.txt
+    cmds:
+      - echo "start" >> log.txt
+      - sleep 0.2
+      - echo "end" >> log.txt
+      - touch output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+
+	run := func() error {
+		var buff bytes.Buffer
+		e := task.NewExecutor(
+			task.WithDir(dir),
+			task.WithStdout(&buff),
+			task.WithStderr(&buff),
+			task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+		)
+		if err := e.Setup(); err != nil {
+			return err
+		}
+		return e.Run(t.Context(), &task.Call{Task: "build"})
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = run()
+		}(i)
+	}
+	wg.Wait()
+
+	// At least one should succeed (one runs, one may see up-to-date)
+	require.NoError(t, errs[0])
+	require.NoError(t, errs[1])
+
+	// Log should never show interleaved "start start end end" —
+	// locking ensures "start end start end" or the second sees up-to-date.
+	logData, err := os.ReadFile(filepath.Join(dir, "log.txt"))
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(logData)), "\n")
+
+	// If both ran, we should see start/end/start/end (not start/start/end/end)
+	if len(lines) == 4 {
+		assert.Equal(t, "start", lines[0])
+		assert.Equal(t, "end", lines[1])
+		assert.Equal(t, "start", lines[2])
+		assert.Equal(t, "end", lines[3])
+	}
+	// If only one ran (other saw up-to-date), 2 lines is also fine
+}
+
+func TestStatusJSONFields(t *testing.T) {
+	// Verify that StatusJSON returns all expected fields with correct types.
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "src.txt"), []byte("data"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  compile:
+    sources:
+      - src.txt
+    generates:
+      - out.bin
+    cmds:
+      - cp src.txt out.bin
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "compile"}))
+
+	buff.Reset()
+	require.NoError(t, e.StatusJSON(&task.Call{Task: "compile"}))
+
+	var result []map[string]any
+	require.NoError(t, json.Unmarshal(buff.Bytes(), &result))
+	require.Len(t, result, 1)
+
+	st := result[0]
+	assert.Equal(t, "compile", st["task"])
+	assert.Equal(t, true, st["up_to_date"])
+	assert.Equal(t, true, st["sources_up_to_date"])
+	assert.Equal(t, true, st["generates_up_to_date"])
+	assert.NotEmpty(t, st["checksum_file"])
+	assert.NotEmpty(t, st["sources_hash"])
+	assert.NotEmpty(t, st["generates_hash"])
+
+	// source_files and source_data should be arrays
+	srcFiles, ok := st["source_files"].([]any)
+	assert.True(t, ok, "source_files should be an array")
+	assert.NotEmpty(t, srcFiles)
+
+	srcData, ok := st["source_data"].([]any)
+	assert.True(t, ok, "source_data should be an array")
+	assert.NotEmpty(t, srcData)
+
+	genFiles, ok := st["generate_files"].([]any)
+	assert.True(t, ok, "generate_files should be an array")
+	assert.NotEmpty(t, genFiles)
+}
+
 func TestSetupSourcesMergeIntoFingerprint(t *testing.T) {
 	// When a task has setup tasks with sources, those sources are merged
 	// into the parent task's Sources at runtime. Changing a setup task's

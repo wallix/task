@@ -700,6 +700,51 @@ tasks:
       - npm run dev
 ```
 
+#### `cache`
+
+- **Type**: `string | object`
+- **Description**: Configures remote caching and distributed locking for a task.
+  When specified as a string, it references a named cache model defined in the
+  top-level `caches:` map. When specified as an object, it can inherit from a
+  model and override individual fields.
+
+Cache fields:
+
+| Field     | Type     | Description                                                        |
+| --------- | -------- | ------------------------------------------------------------------ |
+| `inherit` | `string` | Name of a cache model to inherit from                              |
+| `enabled` | `bool`   | Explicitly enable or disable the cache block                       |
+| `url`     | `string` | Template string resolving to the cache URL (`file://`, `redis://`) |
+| `lock`    | `string` | Template string resolving to the lock URL (`redis://`)             |
+| `ttl`     | `string` | TTL for cached assets (e.g. `48h`, `7d`); default `48h`           |
+
+Supported URL schemes: `file://` for local archives, `redis://` for
+Redis-backed cache and locking. All template fields (`url`, `lock`, `enabled`)
+support standard Task variables plus `{{.TASK}}`, `{{.CHECKSUM}}`, and the
+`urlsafe` template function.
+
+If the remote lock (e.g. Redis) is unavailable, Task logs a warning and falls
+back to a local file lock so the task still runs.
+
+```yaml
+# Define reusable cache models at the top level
+caches:
+  default:
+    enabled: '{{ne .CACHE_URL ""}}'
+    url: '{{.CACHE_URL}}/cache:{{urlsafe .TASK}}-{{.CHECKSUM}}.zip'
+    lock: '{{.CACHE_URL}}/lock:{{urlsafe .TASK}}-{{.CHECKSUM}}'
+
+tasks:
+  build:
+    cache: default
+    sources:
+      - src/**/*.go
+    generates:
+      - bin/app
+    cmds:
+      - go build -o bin/app ./cmd
+```
+
 #### `platforms`
 
 - **Type**: `[]string`

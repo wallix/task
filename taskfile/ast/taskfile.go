@@ -33,6 +33,7 @@ type Taskfile struct {
 	Dotenv   []string
 	Run      string
 	Interval time.Duration
+	Caches   Caches
 }
 
 // Merge merges the second Taskfile into the first
@@ -87,6 +88,7 @@ func (tf *Taskfile) UnmarshalYAML(node *yaml.Node) error {
 			Dotenv   []string
 			Run      string
 			Interval time.Duration
+			Caches   Caches
 		}
 		if err := node.Decode(&taskfile); err != nil {
 			return errors.NewTaskfileDecodeError(err, node)
@@ -103,6 +105,7 @@ func (tf *Taskfile) UnmarshalYAML(node *yaml.Node) error {
 		tf.Dotenv = taskfile.Dotenv
 		tf.Run = taskfile.Run
 		tf.Interval = taskfile.Interval
+		tf.Caches = taskfile.Caches
 		if tf.Includes == nil {
 			tf.Includes = NewIncludes()
 		}

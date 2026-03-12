@@ -1,0 +1,17 @@
+version: '3'
+
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache:
+      # CACHE_DIR is set by the test harness via a variable.
+      url: 'file://{{.CACHE_DIR}}/build-{{.CHECKSUM}}.zip'
+    cmds:
+      - cp input.txt output.txt

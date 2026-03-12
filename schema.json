@@ -201,6 +201,41 @@
           "description": "A list of variables which should be set if this task is to run, if any of these variables are unset the task will error and not run",
           "$ref": "#/definitions/requires_obj"
         },
+        "cache": {
+          "description": "Cache configuration. A string references a named cache model from the caches: map. An object can inherit from a model and override fields.",
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "properties": {
+                "inherit": {
+                  "description": "Name of a cache model from the caches: map to inherit settings from.",
+                  "type": "string"
+                },
+                "enabled": {
+                  "description": "Whether caching is enabled. Can be a boolean or a template string condition.",
+                  "oneOf": [
+                    { "type": "boolean" },
+                    { "type": "string" }
+                  ]
+                },
+                "url": {
+                  "description": "Template string for the cache URL (file:// or redis://).",
+                  "type": "string"
+                },
+                "lock": {
+                  "description": "Template string for a distributed lock URL (redis://).",
+                  "type": "string"
+                },
+                "ttl": {
+                  "description": "Cache asset TTL duration (e.g. \"48h\", \"7d\"). Default: 48h.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
         "watch": {
           "description": "Configures a task to run in watch mode automatically.",
           "type": "boolean",
@@ -780,6 +815,37 @@
           "description": "Sets a different watch interval when using `--watch`, the default being 100 milliseconds. This string should be a valid Go duration: https://pkg.go.dev/time#ParseDuration.",
           "type": "string",
           "pattern": "^[0-9]+(?:m|s|ms)$"
+        },
+        "caches": {
+          "description": "Named cache models that tasks can reference via cache: <name>.",
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "description": "Whether caching is enabled. Can be a boolean or a template string condition.",
+                  "oneOf": [
+                    { "type": "boolean" },
+                    { "type": "string" }
+                  ]
+                },
+                "url": {
+                  "description": "Template string for the cache URL (file:// or redis://).",
+                  "type": "string"
+                },
+                "lock": {
+                  "description": "Template string for a distributed lock URL (redis://).",
+                  "type": "string"
+                },
+                "ttl": {
+                  "description": "Cache asset TTL duration (e.g. \"48h\", \"7d\"). Default: 48h.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
         }
       },
       "additionalProperties": false,

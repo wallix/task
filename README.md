@@ -36,6 +36,33 @@ tasks:
       - go build -ldflags "-X main.buildDate=$(cat version.txt)" -o bin/app .
 ```
 
+#### Per-task cache block (`file://` and `redis://` backends)
+
+Cache generated files so that subsequent runs (or other machines) can skip execution entirely. The `url` and `lock` fields are Go templates with access to all task variables plus `{{.CHECKSUM}}` (SHA256 of sources, commands, and generates).
+
+```yaml
+tasks:
+  build:
+    sources:
+      - src/**/*.go
+    generates:
+      - bin/app
+    cache:
+      enabled: '{{ne .REDIS_URL ""}}'         # optional, template bool
+      url: 'file:///tmp/cache/build-{{.CHECKSUM}}.zip'
+      lock: 'redis://{{.REDIS_URL}}/lock:build-{{.CHECKSUM}}'
+    cmds:
+      - go build -o bin/app .
+```
+
+#### Filesystem-based locking
+
+Tasks with `sources` and `generates` automatically acquire a POSIX advisory file lock (stored in `.task/`) to prevent concurrent execution of the same task.
+
+#### Redis-based distributed locking
+
+When `cache.lock` evaluates to a `redis://` URL, locking is distributed across machines using Redis `SET NX EX` with TTL-based heartbeat renewal.
+
 #### `--status` flag
 
 Show fingerprint status of tasks without running them:
@@ -63,3 +90,16 @@ Exports checksum state and generated files for up-to-date tasks as a ZIP archive
 
 - **Richer fingerprints** -- checksums now include serialized commands and variable data, not just file contents.
 - **Separate staleness reporting** -- `sources` and `generates` staleness is tracked and reported independently.
+
+## Execution pipeline
+
+```
+setup tasks (unconditional, sequential)
+  -> merge setup fingerprints into parent sources
+  -> acquire lock (file or redis)
+  -> run deps (parallel)
+  -> check fingerprint
+     -> try restore from cache (file:// or redis://)
+     -> if miss: execute task, then save to cache
+  -> release lock
+```

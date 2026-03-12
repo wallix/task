@@ -1,0 +1,19 @@
+version: '3'
+
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+
+caches:
+  default:
+    url: 'file://{{.CACHE_DIR}}/{{urlsafe .TASK}}-{{.CHECKSUM}}.zip'
+
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache: default
+    cmds:
+      - cp input.txt output.txt

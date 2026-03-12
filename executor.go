@@ -10,6 +10,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/sajari/fuzzy"
 
+	"github.com/wallix/task/v3/internal/lock"
 	"github.com/wallix/task/v3/internal/logger"
 	"github.com/wallix/task/v3/internal/output"
 	"github.com/wallix/task/v3/internal/sort"
@@ -60,6 +61,7 @@ type (
 		TaskSorter         sort.Sorter
 		UserWorkingDir     string
 		EnableVersionCheck bool
+		Locker             lock.Locker
 
 		fuzzyModel     *fuzzy.Model
 		fuzzyModelOnce sync.Once
