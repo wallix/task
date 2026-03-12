@@ -742,6 +742,129 @@ tasks:
 	assert.Equal(t, 2, len(lines), "setup should have run twice (once per invocation), got: %s", string(log))
 }
 
+func TestSetupFingerprintMerge(t *testing.T) {
+	t.Parallel()
+
+	// When a setup task has sources/generates, those should be merged
+	// into the parent task's fingerprint. If the setup task's source
+	// changes, the parent should rebuild even if its own sources are unchanged.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v1"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  enforce-version:
+    sources:
+      - version.txt
+    generates:
+      - resolved-version.txt
+    cmds:
+      - cp version.txt resolved-version.txt
+
+  build:
+    setup:
+      - enforce-version
+    sources:
+      - source.txt
+    cmds:
+      - cat source.txt resolved-version.txt > output.txt
+    generates:
+      - output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// First run: both setup and build execute
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	output, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(output), "v1")
+
+	// Second run: everything up-to-date
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "up to date")
+
+	// Now change version.txt (setup task's source) — parent's own source.txt is unchanged
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v2"), 0o644))
+
+	// Third run: setup rebuilds resolved-version.txt, and because the setup
+	// task's sources/generates are merged into the parent's fingerprint,
+	// the parent should also rebuild
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.NotContains(t, buff.String(), "up to date",
+		"parent task should rebuild when setup task's sources change")
+	output, err = os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(output), "v2")
+}
+
+func TestSetupFingerprintFalse(t *testing.T) {
+	t.Parallel()
+
+	// When a setup dep has fingerprint: false, its sources/generates
+	// should NOT be merged into the parent's fingerprint.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v1"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  enforce-version:
+    sources:
+      - version.txt
+    generates:
+      - resolved-version.txt
+    cmds:
+      - cp version.txt resolved-version.txt
+
+  build:
+    setup:
+      - task: enforce-version
+        fingerprint: false
+    sources:
+      - source.txt
+    cmds:
+      - cat source.txt resolved-version.txt > output.txt
+    generates:
+      - output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// First run
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Second run: up-to-date
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "up to date")
+
+	// Change version.txt — with fingerprint: false, parent should stay up-to-date
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v2"), 0o644))
+
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "up to date",
+		"parent should stay up-to-date when setup has fingerprint: false")
+}
+
 func TestCmdsVariables(t *testing.T) {
 	t.Parallel()
 
