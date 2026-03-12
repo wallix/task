@@ -71,10 +71,12 @@ var (
 	Output       ast.Output
 	Color        bool
 	Interval     time.Duration
-	Failfast     bool
-	Global       bool
-	Experiments  bool
-	Interactive  bool
+	Failfast    bool
+	Global      bool
+	Experiments bool
+	Interactive bool
+	ExportCache string
+	ImportCache string
 )
 
 func init() {
@@ -139,6 +141,8 @@ func init() {
 	pflag.BoolVarP(&Failfast, "failfast", "F", getConfig(config, "FAILFAST", func() *bool { return &config.Failfast }, false), "When running tasks in parallel, stop all tasks if one fails.")
 	pflag.BoolVarP(&Global, "global", "g", false, "Runs global Taskfile, from $HOME/{T,t}askfile.{yml,yaml}.")
 	pflag.BoolVar(&Experiments, "experiments", false, "Lists all the available experiments and whether or not they are enabled.")
+	pflag.StringVar(&ExportCache, "export-cache", "", "Exports generated files and fingerprint state to a zip file.")
+	pflag.StringVar(&ImportCache, "import-cache", "", "Imports generated files and fingerprint state from a zip file.")
 
 	// Gentle force experiment will override the force flag and add a new force-all flag
 	if experiments.GentleForce.Enabled() {
