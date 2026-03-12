@@ -116,8 +116,8 @@ func (checker *ChecksumChecker) Status(t *ast.Task) (*TaskStatus, error) {
 		return nil, err
 	}
 
-	sourcesFiles, _ := Globs(t.Dir, sourcesGlobs)
-	generates, _ := Globs(t.Dir, t.Generates)
+	sourcesFiles, _ := Globs(t.ComputeDir(), sourcesGlobs)
+	generates, _ := Globs(t.ComputeDir(), t.Generates)
 
 	srcOK := oldSourcesHash == newSourcesHash
 	genOK := oldGeneratesHash == newGeneratesHash
@@ -190,11 +190,11 @@ func (*ChecksumChecker) Kind() string {
 }
 
 func (c *ChecksumChecker) checksum(t *ast.Task, globs []*ast.Glob, data []string) (string, error) {
-	sources, err := Globs(t.Dir, globs)
+	sources, err := Globs(t.ComputeDir(), globs)
 	if err != nil {
 		return "", err
 	}
-	return ChecksumFiles(t.Dir, sources, data)
+	return ChecksumFiles(t.ComputeDir(), sources, data)
 }
 
 func (checker *ChecksumChecker) checksumFilePath(t *ast.Task) string {

@@ -599,6 +599,56 @@ func TestStatusCommandNoSources(t *testing.T) {
 	assert.Contains(t, buff.String(), "has no sources or generates")
 }
 
+func TestIncludeDirWithAbsoluteVar(t *testing.T) {
+	t.Parallel()
+
+	// Regression test: when an included taskfile uses dir: "{{.SOME_VAR}}"
+	// where the var resolves to an absolute path, the compiled task dir
+	// must be that absolute path — not include.Dir prefixed to it.
+	//
+	// Before the fix, SmartJoin ran at merge time on the un-templated
+	// "{{.TARGET_DIR}}" string (not recognized as absolute), producing
+	// "/root/{{.TARGET_DIR}}". After template resolution this became
+	// "/root//abs/target" — a doubled path.
+	dir := t.TempDir()
+	subDir := filepath.Join(dir, "sub")
+	targetDir := filepath.Join(dir, "target")
+	require.NoError(t, os.MkdirAll(subDir, 0o755))
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+includes:
+  sub:
+    taskfile: ./sub/Taskfile.yml
+    internal: true
+`), 0o644))
+
+	require.NoError(t, os.WriteFile(filepath.Join(subDir, "Taskfile.yml"), []byte(fmt.Sprintf(`version: '3'
+vars:
+  TARGET_DIR: '%s'
+tasks:
+  build:
+    dir: "{{.TARGET_DIR}}"
+    cmds:
+      - echo ok
+`, targetDir)), 0o644))
+
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{
+			Fingerprint: filepath.Join(dir, ".task"),
+		}),
+	)
+	require.NoError(t, e.Setup())
+
+	compiled, err := e.CompiledTask(&task.Call{Task: "sub:build"})
+	require.NoError(t, err)
+	assert.Equal(t, targetDir, compiled.ComputeDir())
+}
+
 func TestCmdsVariables(t *testing.T) {
 	t.Parallel()
 
