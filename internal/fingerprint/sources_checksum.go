@@ -1,9 +1,11 @@
 package fingerprint
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/go-task/task/v3/internal/filepathext"
@@ -24,6 +26,39 @@ func NewChecksumChecker(tempDir string, dry bool) *ChecksumChecker {
 	}
 }
 
+func serializeCmd(idx int, c *ast.Cmd) string {
+	return fmt.Sprintf("cmd[%d]:%s", idx, c.Cmd)
+}
+
+func (checker *ChecksumChecker) filterChecksumData(t *ast.Task) ([]*ast.Glob, []string) {
+	var sources []*ast.Glob
+	var data []string
+	for _, source := range t.Sources {
+		if strings.HasPrefix(source.Glob, "value:") {
+			data = append(data, source.Glob)
+		} else {
+			sources = append(sources, source)
+			s := source.Glob
+			if source.Negate {
+				s = "!" + s
+			}
+			data = append(data, "srcrule:"+s)
+		}
+	}
+	for i, cmd := range t.Cmds {
+		data = append(data, serializeCmd(i, cmd))
+	}
+	for _, genRule := range t.Generates {
+		s := genRule.Glob
+		if genRule.Negate {
+			s = "!" + s
+		}
+		data = append(data, "genrule:"+s)
+	}
+	sort.Strings(data)
+	return sources, data
+}
+
 func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, error) {
 	if len(t.Sources) == 0 {
 		return false, nil
@@ -34,7 +69,8 @@ func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, error) {
 	data, _ := os.ReadFile(checksumFile)
 	oldHash := strings.TrimSpace(string(data))
 
-	newHash, err := checker.checksum(t)
+	sourcesGlobs, srcData := checker.filterChecksumData(t)
+	newHash, err := checker.checksum(t, sourcesGlobs, srcData)
 	if err != nil {
 		return false, nil
 	}
@@ -69,7 +105,8 @@ func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, error) {
 }
 
 func (checker *ChecksumChecker) Value(t *ast.Task) (any, error) {
-	return checker.checksum(t)
+	sourcesGlobs, srcData := checker.filterChecksumData(t)
+	return checker.checksum(t, sourcesGlobs, srcData)
 }
 
 func (checker *ChecksumChecker) OnError(t *ast.Task) error {
@@ -83,12 +120,12 @@ func (*ChecksumChecker) Kind() string {
 	return "checksum"
 }
 
-func (c *ChecksumChecker) checksum(t *ast.Task) (string, error) {
-	sources, err := Globs(t.Dir, t.Sources)
+func (c *ChecksumChecker) checksum(t *ast.Task, globs []*ast.Glob, data []string) (string, error) {
+	sources, err := Globs(t.Dir, globs)
 	if err != nil {
 		return "", err
 	}
-	return ChecksumFiles(t.Dir, sources, nil)
+	return ChecksumFiles(t.Dir, sources, data)
 }
 
 func (checker *ChecksumChecker) checksumFilePath(t *ast.Task) string {
