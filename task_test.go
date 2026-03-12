@@ -865,6 +865,148 @@ tasks:
 		"parent should stay up-to-date when setup has fingerprint: false")
 }
 
+func TestExportImportCache(t *testing.T) {
+	t.Parallel()
+
+	// Create a project with two tasks: a leaf and a parent that depends on it
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - cp input.txt output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Run the task so it becomes up-to-date
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+
+	// Export cache
+	cacheFile := filepath.Join(t.TempDir(), "cache.zip")
+	require.NoError(t, e.ExportCache(cacheFile, &task.Call{Task: "build"}))
+	assert.FileExists(t, cacheFile)
+
+	// Delete the generated file and checksum dir
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	// Task should NOT be up-to-date now
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+
+	// Import cache
+	require.NoError(t, e2.ImportCache(cacheFile, &task.Call{Task: "build"}))
+
+	// The generated file should be restored
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	content, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(content))
+
+	// Task should now be up-to-date (checksums restored)
+	buff.Reset()
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "up to date")
+}
+
+func TestExportCacheSkipsNotUpToDate(t *testing.T) {
+	t.Parallel()
+
+	// Export should skip tasks that are not up-to-date
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - cp input.txt output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Don't run the task — it's never been run, so not up-to-date
+	cacheFile := filepath.Join(t.TempDir(), "cache.zip")
+	require.NoError(t, e.ExportCache(cacheFile, &task.Call{Task: "build"}))
+
+	// Cache file should NOT be created (no up-to-date tasks)
+	_, err := os.Stat(cacheFile)
+	assert.True(t, os.IsNotExist(err), "cache file should not exist when no tasks are up-to-date")
+}
+
+func TestExportCacheUnmodified(t *testing.T) {
+	t.Parallel()
+
+	// Exporting twice without changes should detect the archive is unmodified
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - cp input.txt output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	cacheFile := filepath.Join(t.TempDir(), "cache.zip")
+
+	// First export
+	buff.Reset()
+	require.NoError(t, e.ExportCache(cacheFile, &task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "exporting cache")
+
+	// Second export — should detect unmodified
+	buff.Reset()
+	require.NoError(t, e.ExportCache(cacheFile, &task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "unmodified")
+}
+
 func TestCmdsVariables(t *testing.T) {
 	t.Parallel()
 

@@ -45,6 +45,20 @@ task --status build           # human-readable
 task --status --json build    # machine-readable
 ```
 
+#### `--export-cache` and `--import-cache`
+
+Portable fingerprint state for CI/CD pipelines:
+
+```bash
+# On build machine
+task --export-cache state.zip build test
+
+# On CI machine
+task --import-cache state.zip
+```
+
+Exports checksum state and generated files for up-to-date tasks as a ZIP archive.
+
 ### Improved
 
 - **Richer fingerprints** -- checksums now include serialized commands and variable data, not just file contents.

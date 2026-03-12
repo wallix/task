@@ -186,11 +186,19 @@ func run() error {
 		e.InterceptInterruptSignals()
 	}
 
+	if flags.ImportCache != "" {
+		return e.ImportCache(flags.ImportCache, calls...)
+	}
+
 	if flags.Status {
 		if flags.ListJson {
 			return e.StatusJSON(calls...)
 		}
 		return e.Status(calls...)
+	}
+
+	if flags.ExportCache != "" {
+		return e.ExportCache(flags.ExportCache, calls...)
 	}
 
 	ctx := context.Background()
