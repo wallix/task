@@ -206,6 +206,9 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 
 	if err = e.startExecution(ctx, t, func(ctx context.Context) error {
 		e.Logger.VerboseErrf(logger.Magenta, "task: %q started\n", call.Task)
+		if err := e.runSetup(ctx, t); err != nil {
+			return err
+		}
 		if err := e.runDeps(ctx, t); err != nil {
 			return err
 		}
@@ -306,6 +309,18 @@ func (e *Executor) mkdir(t *ast.Task) error {
 
 	if _, err := os.Stat(t.ComputeDir()); os.IsNotExist(err) {
 		if err := os.MkdirAll(t.ComputeDir(), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// runSetup runs setup tasks sequentially and unconditionally, before
+// deps and fingerprint checking. This ensures preparation steps
+// (like enforcing version files) always run.
+func (e *Executor) runSetup(ctx context.Context, t *ast.Task) error {
+	for _, d := range t.Setup {
+		if err := e.RunTask(ctx, &Call{Task: d.Task, Vars: d.Vars, Silent: d.Silent, Indirect: true}); err != nil {
 			return err
 		}
 	}

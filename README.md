@@ -14,6 +14,28 @@ Source: [github.com/wallix/task](https://github.com/wallix/task)
 
 ### Added
 
+#### Setup tasks
+
+A new `setup` field runs tasks **unconditionally and sequentially** before deps and fingerprint checks.
+
+```yaml
+tasks:
+  enforce-version:
+    cmds:
+      - date +%Y-%m-%d > version.txt
+
+  build:
+    setup:
+      - enforce-version
+    sources:
+      - version.txt
+      - src/**/*.go
+    generates:
+      - bin/app
+    cmds:
+      - go build -ldflags "-X main.buildDate=$(cat version.txt)" -o bin/app .
+```
+
 #### `--status` flag
 
 Show fingerprint status of tasks without running them:

@@ -135,6 +135,13 @@ func (t1 *Tasks) Merge(t2 *Tasks, include *Include, includedTaskfileVars *Vars) 
 		}
 
 		if !include.Flatten {
+			// Add namespaces to task setup
+			for _, dep := range task.Setup {
+				if dep != nil && dep.Task != "" {
+					dep.Task = taskNameWithNamespace(dep.Task, include.Namespace)
+				}
+			}
+
 			// Add namespaces to task dependencies
 			for _, dep := range task.Deps {
 				if dep != nil && dep.Task != "" {
