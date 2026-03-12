@@ -76,6 +76,9 @@ func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, string, error) {
 	if len(t.Sources) == 0 && len(t.Generates) == 0 {
 		return false, "", nil
 	}
+	if len(t.Sources) == 0 {
+		return false, "", fmt.Errorf("task %q has generates but no sources", t.Name())
+	}
 
 	checksumFile := checker.checksumFilePath(t)
 
@@ -100,6 +103,9 @@ func (checker *ChecksumChecker) IsUpToDate(t *ast.Task) (bool, string, error) {
 // Status returns the full fingerprint state for a task including
 // which parts (sources, generates) are up to date.
 func (checker *ChecksumChecker) Status(t *ast.Task) (*TaskStatus, error) {
+	if len(t.Sources) == 0 && len(t.Generates) > 0 {
+		return nil, fmt.Errorf("task %q has generates but no sources", t.Name())
+	}
 	checksumFile := checker.checksumFilePath(t)
 
 	data, _ := os.ReadFile(checksumFile)
@@ -138,6 +144,9 @@ func (checker *ChecksumChecker) Status(t *ast.Task) (*TaskStatus, error) {
 }
 
 func (checker *ChecksumChecker) Value(t *ast.Task) (any, error) {
+	if len(t.Sources) == 0 && len(t.Generates) > 0 {
+		return nil, fmt.Errorf("task %q has generates but no sources", t.Name())
+	}
 	sourcesGlobs, srcData := checker.filterChecksumData(t)
 	c1, err := checker.checksum(t, sourcesGlobs, srcData)
 	if err != nil {

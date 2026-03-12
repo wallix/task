@@ -1007,6 +1007,34 @@ tasks:
 	assert.Contains(t, buff.String(), "unmodified")
 }
 
+func TestGeneratesWithoutSourcesError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  bad:
+    generates:
+      - output.txt
+    cmds:
+      - echo hello > output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	err := e.Run(t.Context(), &task.Call{Task: "bad"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "has generates but no sources")
+}
+
 func TestCmdsVariables(t *testing.T) {
 	t.Parallel()
 
