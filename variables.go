@@ -244,44 +244,13 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 			new.Cmds = append(new.Cmds, newCmd)
 		}
 	}
-	if len(origTask.Deps) > 0 {
-		new.Deps = make([]*ast.Dep, 0, len(origTask.Deps))
-		for _, dep := range origTask.Deps {
-			if dep == nil {
-				continue
-			}
-			if dep.For != nil {
-				list, keys, err := itemsFromFor(dep.For, new.ComputeDir(), new.Sources, new.Generates, vars, origTask.Location, cache)
-				if err != nil {
-					return nil, err
-				}
-				// Name the iterator variable
-				var as string
-				if dep.For.As != "" {
-					as = dep.For.As
-				} else {
-					as = "ITEM"
-				}
-				// Create a new command for each item in the list
-				for i, loopValue := range list {
-					extra := map[string]any{
-						as: loopValue,
-					}
-					if len(keys) > 0 {
-						extra["KEY"] = keys[i]
-					}
-					newDep := dep.DeepCopy()
-					newDep.Task = templater.ReplaceWithExtra(dep.Task, cache, extra)
-					newDep.Vars = templater.ReplaceVarsWithExtra(dep.Vars, cache, extra)
-					new.Deps = append(new.Deps, newDep)
-				}
-				continue
-			}
-			newDep := dep.DeepCopy()
-			newDep.Task = templater.Replace(dep.Task, cache)
-			newDep.Vars = templater.ReplaceVars(dep.Vars, cache)
-			new.Deps = append(new.Deps, newDep)
-		}
+	new.Setup, err = compileDeps(origTask.Setup, &new, vars, origTask.Location, cache)
+	if err != nil {
+		return nil, err
+	}
+	new.Deps, err = compileDeps(origTask.Deps, &new, vars, origTask.Location, cache)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(origTask.Preconditions) > 0 {
@@ -453,4 +422,48 @@ func product(matrix *ast.Matrix) []map[string]any {
 	}
 
 	return result
+}
+
+// compileDeps resolves templates and for-loops in a list of deps.
+// Used for both Setup and Deps fields.
+func compileDeps(deps []*ast.Dep, t *ast.Task, vars *ast.Vars, location *ast.Location, cache *templater.Cache) ([]*ast.Dep, error) {
+	if len(deps) == 0 {
+		return nil, nil
+	}
+	result := make([]*ast.Dep, 0, len(deps))
+	for _, dep := range deps {
+		if dep == nil {
+			continue
+		}
+		if dep.For != nil {
+			list, keys, err := itemsFromFor(dep.For, t.ComputeDir(), t.Sources, t.Generates, vars, location, cache)
+			if err != nil {
+				return nil, err
+			}
+			var as string
+			if dep.For.As != "" {
+				as = dep.For.As
+			} else {
+				as = "ITEM"
+			}
+			for i, loopValue := range list {
+				extra := map[string]any{
+					as: loopValue,
+				}
+				if len(keys) > 0 {
+					extra["KEY"] = keys[i]
+				}
+				newDep := dep.DeepCopy()
+				newDep.Task = templater.ReplaceWithExtra(dep.Task, cache, extra)
+				newDep.Vars = templater.ReplaceVarsWithExtra(dep.Vars, cache, extra)
+				result = append(result, newDep)
+			}
+			continue
+		}
+		newDep := dep.DeepCopy()
+		newDep.Task = templater.Replace(dep.Task, cache)
+		newDep.Vars = templater.ReplaceVars(dep.Vars, cache)
+		result = append(result, newDep)
+	}
+	return result, nil
 }

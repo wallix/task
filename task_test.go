@@ -649,6 +649,99 @@ tasks:
 	assert.Equal(t, targetDir, compiled.ComputeDir())
 }
 
+func TestSetupRunsBeforeFingerprint(t *testing.T) {
+	t.Parallel()
+
+	// Setup tasks run unconditionally before fingerprint checking.
+	// This test verifies that a setup task modifies a source file,
+	// causing the main task to see it as changed and re-run.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v1"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  enforce-version:
+    cmds:
+      - echo "v2" > version.txt
+
+  build:
+    setup:
+      - enforce-version
+    sources:
+      - version.txt
+    cmds:
+      - cp version.txt output.txt
+    generates:
+      - output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// First run: setup modifies version.txt, then build runs
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	output, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(output), "v2", "setup should have updated version.txt before build ran")
+
+	// Second run: setup runs again (unconditionally), modifies version.txt
+	// again, but since content is same, fingerprint should show up-to-date
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.Contains(t, buff.String(), "up to date")
+}
+
+func TestSetupRunsEvenWhenUpToDate(t *testing.T) {
+	t.Parallel()
+
+	// Even when the main task is up-to-date, setup tasks must still run.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  track:
+    cmds:
+      - echo "setup-ran" >> setup.log
+
+  build:
+    setup:
+      - track
+    sources:
+      - source.txt
+    cmds:
+      - cp source.txt output.txt
+    generates:
+      - output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// First run
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Second run: task is up-to-date, but setup should still run
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	log, err := os.ReadFile(filepath.Join(dir, "setup.log"))
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+	assert.Equal(t, 2, len(lines), "setup should have run twice (once per invocation), got: %s", string(log))
+}
+
 func TestCmdsVariables(t *testing.T) {
 	t.Parallel()
 

@@ -15,6 +15,7 @@ import (
 // Task represents a task
 type Task struct {
 	Task          string `hash:"ignore"`
+	Setup         []*Dep
 	Cmds          []*Cmd
 	Deps          []*Dep
 	Label         string
@@ -132,6 +133,7 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 	// Full task object
 	case yaml.MappingNode:
 		var task struct {
+			Setup         []*Dep
 			Cmds          []*Cmd
 			Cmd           *Cmd
 			Deps          []*Dep
@@ -172,6 +174,7 @@ func (t *Task) UnmarshalYAML(node *yaml.Node) error {
 		} else {
 			t.Cmds = task.Cmds
 		}
+		t.Setup = task.Setup
 		t.Deps = task.Deps
 		t.Label = task.Label
 		t.Desc = task.Desc
@@ -214,6 +217,7 @@ func (t *Task) DeepCopy() *Task {
 	}
 	c := &Task{
 		Task:                 t.Task,
+		Setup:                deepcopy.Slice(t.Setup),
 		Cmds:                 deepcopy.Slice(t.Cmds),
 		Deps:                 deepcopy.Slice(t.Deps),
 		Label:                t.Label,
