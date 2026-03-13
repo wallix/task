@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.53.0 - 2026-03-13
+
+### Features
+
+- Checksum data strings now use paths relative to the task directory, making
+  checksums stable across CI runners with different workspace paths.
+
+### Fixes
+
+- Cached tasks with `generates` paths outside the project root are now rejected
+  at compilation time, preventing path-traversal in cache archives.
+
 ## v3.52.0 - 2026-03-13
 
 ### Features
