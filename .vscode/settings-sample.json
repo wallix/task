@@ -1,6 +1,6 @@
 {
   "yaml.schemas": {
-    "./website/src/public/schema.json": [
+    "./schema.json": [
         "Taskfile.yml",
         "Taskfile.yaml",
         "taskfile.yml",

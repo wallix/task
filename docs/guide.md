@@ -2611,7 +2611,7 @@ advised to avoid running commands as `go run` and prefer `go build [...] &&
 
 If you are having issues, you might want to try tools specifically designed for
 live-reloading, like [Air](https://github.com/air-verse/air/). Also, be sure to
-[report any issues](https://github.com/go-task/task/issues/new?template=bug_report.yml)
+[report any issues](https://github.com/wallix/task/issues/new)
 to us.
 
 :::

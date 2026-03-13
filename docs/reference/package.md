@@ -32,7 +32,7 @@ want to contribute to Task or understand how it works in more detail.
 The following packages make up the most important parts of Task's package API.
 Below we have listed what they are for and some of the key types available:
 
-### [`github.com/go-task/task/v3`]
+### [`github.com/wallix/task/v3`]
 
 The core task package provides most of the main functionality for Task including
 fetching and executing tasks from a Taskfile. At this time, the vast majority of
@@ -46,7 +46,7 @@ as we refine the API.
 
 :::
 
-### [`github.com/go-task/task/v3/taskfile`]
+### [`github.com/wallix/task/v3/taskfile`]
 
 The `taskfile` package provides utilities for _reading_ Taskfiles from various
 sources. These sources can be local files, remote files, or even in-memory
@@ -63,7 +63,7 @@ strings (via stdin).
   stores a small part of a taskfile around a given line number and column. The
   output can be syntax highlighted for CLIs and include line/column indicators.
 
-### [`github.com/go-task/task/v3/taskfile/ast`]
+### [`github.com/wallix/task/v3/taskfile/ast`]
 
 AST stands for ["Abstract Syntax Tree"][ast]. An AST allows us to easily
 represent the Taskfile syntax in Go. This package provides a way to parse
@@ -75,7 +75,7 @@ Taskfile YAML into an AST and store them in memory.
   The `Taskfile` type contains all of the subtypes for the Taskfile syntax, such
   as `tasks`, `includes`, `vars`, etc. These are not listed here for brevity.
 
-### [`github.com/go-task/task/v3/errors`]
+### [`github.com/wallix/task/v3/errors`]
 
 Contains all of the error types used in Task. All of these types implement the
 [`errors.TaskError`] interface which wraps Go's standard [`error`] interface.
@@ -84,12 +84,12 @@ code for any error.
 
 ## Reading Taskfiles
 
-Start by importing the `github.com/go-task/task/v3/taskfile` package. This
+Start by importing the `github.com/wallix/task/v3/taskfile` package. This
 provides all of the functions you need to read a Taskfile into memory:
 
 ```go
 import (
-    "github.com/go-task/task/v3/taskfile"
+    "github.com/wallix/task/v3/taskfile"
 )
 ```
 
@@ -145,37 +145,37 @@ causes lots of issues with scoping.
 
 :::
 
-[`github.com/go-task/task/v3`]: https://pkg.go.dev/github.com/go-task/task/v3
-[`github.com/go-task/task/v3/taskfile`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile
-[`github.com/go-task/task/v3/taskfile/ast`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile/ast
-[`github.com/go-task/task/v3/errors`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/errors
+[`github.com/wallix/task/v3`]: https://pkg.go.dev/github.com/wallix/task/v3
+[`github.com/wallix/task/v3/taskfile`]:
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile
+[`github.com/wallix/task/v3/taskfile/ast`]:
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile/ast
+[`github.com/wallix/task/v3/errors`]:
+  https://pkg.go.dev/github.com/wallix/task/v3/errors
 [`ast.TaskfileGraph`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile/ast#TaskfileGraph
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile/ast#TaskfileGraph
 [`ast.Taskfile`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile/ast#Taskfile
-[`taskfile.Node`]: https://pkg.go.dev/github.com/go-task/task/v3/taskfile#Node
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile/ast#Taskfile
+[`taskfile.Node`]: https://pkg.go.dev/github.com/wallix/task/v3/taskfile#Node
 [`taskfile.FileNode`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#FileNode
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#FileNode
 [`taskfile.HTTPNode`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#HTTPNode
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#HTTPNode
 [`taskfile.GitNode`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#GitNode
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#GitNode
 [`taskfile.StdinNode`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#StdinNode
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#StdinNode
 [`taskfile.NewFileNode`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#NewFileNode
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#NewFileNode
 [`taskfile.Reader`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#Reader
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#Reader
 [`taskfile.NewReader`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#NewReader
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#NewReader
 [`taskfile.Snippet`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/taskfile#Snippet
-[`task.Executor`]: https://pkg.go.dev/github.com/go-task/task/v3#Executor
-[`task.Formatter`]: https://pkg.go.dev/github.com/go-task/task/v3#Formatter
+  https://pkg.go.dev/github.com/wallix/task/v3/taskfile#Snippet
+[`task.Executor`]: https://pkg.go.dev/github.com/wallix/task/v3#Executor
+[`task.Formatter`]: https://pkg.go.dev/github.com/wallix/task/v3#Formatter
 [`errors.TaskError`]:
-  https://pkg.go.dev/github.com/go-task/task/v3/errors#TaskError
+  https://pkg.go.dev/github.com/wallix/task/v3/errors#TaskError
 [`error`]: https://pkg.go.dev/builtin#error
 [ast]: https://en.wikipedia.org/wiki/Abstract_syntax_tree
