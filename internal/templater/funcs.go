@@ -3,6 +3,7 @@ package templater
 import (
 	"maps"
 	"math/rand/v2"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -34,6 +35,7 @@ func init() {
 		"IsSH":         IsSH, // Deprecated
 		"joinPath":     filepath.Join,
 		"relPath":      filepath.Rel,
+		"urlsafe":      urlSafe,
 		"merge":        merge,
 		"spew":         spew.Sdump,
 		"fromYaml":     fromYaml,
@@ -92,6 +94,13 @@ func splitArgs(s string) ([]string, error) {
 // Deprecated: now always returns true
 func IsSH() bool {
 	return true
+}
+
+// urlSafe returns a URL-safe encoding of s suitable for use in cache keys.
+// It percent-encodes the string and replaces "@" with "|" to avoid ambiguity
+// in Redis key patterns.
+func urlSafe(s string) string {
+	return strings.ReplaceAll(url.PathEscape(s), "@", "|")
 }
 
 func merge(base map[string]any, v ...map[string]any) map[string]any {

@@ -63,6 +63,15 @@ Tasks with `sources` and `generates` automatically acquire a POSIX advisory file
 
 When `cache.lock` evaluates to a `redis://` URL, locking is distributed across machines using Redis `SET NX EX` with TTL-based heartbeat renewal.
 
+#### `urlsafe` template function
+
+`{{urlsafe .TASK}}` percent-encodes a string for use in URLs, replacing special characters like colons from namespaced task names. Useful in cache URLs:
+
+```yaml
+cache:
+  url: echo "redis://$REDIS_URL/cache:{{urlsafe .TASK}}/$TASK_CACHE_HASH"
+```
+
 #### `--status` flag
 
 Show fingerprint status of tasks without running them:

@@ -3096,15 +3096,15 @@ func TestCacheEnabledShellCondition(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "cache should not be used when condition fails")
 }
 
-func TestCacheEnabledConditionTrue(t *testing.T) {
-	// When the cache condition evaluates to true, the cache should be used.
-	dir := copyTestdata(t, "cache_conditional")
+func TestCacheInheritFromTaskfile(t *testing.T) {
+	dir := copyTestdata(t, "cache_inherit")
 	cacheDir := filepath.Join(t.TempDir(), "cache")
 	t.Setenv("CACHE_DIR", cacheDir)
-	t.Setenv("ENABLE_CACHE", "1")
 
 	tempDir := filepath.Join(dir, ".task")
 	var buff bytes.Buffer
+
+	// Run once — should populate the cache using taskfile-level defaults
 	e := task.NewExecutor(
 		task.WithDir(dir),
 		task.WithStdout(&buff),
@@ -3113,16 +3113,61 @@ func TestCacheEnabledConditionTrue(t *testing.T) {
 	)
 	require.NoError(t, e.Setup())
 	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
 
-	// Cache dir should have been created
+	// Verify cache was saved
 	entries, err := os.ReadDir(cacheDir)
 	require.NoError(t, err)
-	assert.Len(t, entries, 1, "cache should be used when condition is true")
+	assert.Len(t, entries, 1, "cache dir should have one zip")
 
-	// Delete generates and checksum to force cache restore
+	// Delete generates and checksum — task is now out-of-date
 	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
 	require.NoError(t, os.RemoveAll(tempDir))
 
+	// Run again — should restore from cache
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "build"}))
+
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	assert.Contains(t, buff.String(), "restored from cache")
+}
+
+func TestCacheInheritWithOverride(t *testing.T) {
+	dir := copyTestdata(t, "cache_inherit_override")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+
+	// Run once — cache url is overridden to file:// even though taskfile default is redis://
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+
+	// Verify cache was saved to the overridden file:// location
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache dir should have one zip from overridden url")
+
+	// Delete generates and checksum
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	// Run again — should restore from the overridden file:// cache
 	buff.Reset()
 	e2 := task.NewExecutor(
 		task.WithDir(dir),
@@ -3335,6 +3380,76 @@ tasks:
 	genFiles, ok := st["generate_files"].([]any)
 	assert.True(t, ok, "generate_files should be an array")
 	assert.NotEmpty(t, genFiles)
+}
+
+func TestCacheEnabledConditionTrue(t *testing.T) {
+	// When the cache condition evaluates to true, the cache should be used.
+	dir := copyTestdata(t, "cache_conditional")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+	t.Setenv("ENABLE_CACHE", "1")
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Cache dir should have been created
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache should be used when condition is true")
+
+	// Delete generates and checksum to force cache restore
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "build"}))
+
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	assert.Contains(t, buff.String(), "restored from cache")
+}
+
+func TestCacheURLSafeTaskName(t *testing.T) {
+	// Verify that {{urlsafe .TASK}} in cache URLs correctly encodes
+	// special characters like colons from namespaced task names.
+	dir := copyTestdata(t, "cache_inherit")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Verify cache was saved — the URL contains {{urlsafe .TASK}}
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache should have been saved with urlsafe task name")
+
+	// Verify the filename doesn't contain raw special chars
+	for _, entry := range entries {
+		assert.NotContains(t, entry.Name(), ":", "cache filename should be URL-safe")
+	}
 }
 
 func TestSetupSourcesMergeIntoFingerprint(t *testing.T) {
