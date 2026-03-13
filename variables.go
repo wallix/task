@@ -121,6 +121,7 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		Run:                  templater.Replace(origTask.Run, cache),
 		IncludeVars:          origTask.IncludeVars,
 		IncludedTaskfileVars: origTask.IncludedTaskfileVars,
+		RawCmds:              origTask.Cmds,
 		Cache:                nil, // resolved below after CHECKSUM is available
 		Platforms:            origTask.Platforms,
 		If:                   templater.Replace(origTask.If, cache),
@@ -182,53 +183,13 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		}
 	}
 
-	// Use origTask.Cmds for CHECKSUM so that raw command templates are
-	// hashed (stable across environments). Commands may reference
-	// {{.CHECKSUM}} themselves, so we resolve them after.
+	// Compute source hash from RawCmds (unresolved templates) for stable
+	// checksumming. CHECKSUM must be available before cmd/cache resolution.
 	if len(origTask.Sources) > 0 {
-		new.Cmds = origTask.Cmds
-		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
-
-		value, err := checker.SourceValue(&new)
-		if err != nil {
-			return nil, err
-		}
-		new.Cmds = nil
-		vars.Set(strings.ToUpper(checker.Kind()), ast.Var{Live: value})
-
-		// Adding new variables, requires us to refresh the templaters
-		// cache of the the values manually
+		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, &new)
+		new.SourceHash = checker.SourceValue()
+		vars.Set("CHECKSUM", ast.Var{Live: new.SourceHash})
 		cache.ResetCache()
-	}
-
-	// Resolve cache fields after CHECKSUM is available so that
-	// {{ .CHECKSUM }}, {{ .TASK }}, {{ urlsafe .TASK }} etc. work.
-	if origTask.Cache != nil {
-		resolved := origTask.Cache.DeepCopy()
-		// Inherit from a named cache model, then overlay task-level fields.
-		if resolved.Inherit != "" {
-			if model, ok := e.Taskfile.Caches[resolved.Inherit]; ok && model != nil {
-				merged := model.DeepCopy()
-				if resolved.URL != "" {
-					merged.URL = resolved.URL
-				}
-				if resolved.Lock != "" {
-					merged.Lock = resolved.Lock
-				}
-				if resolved.If != "" {
-					merged.If = resolved.If
-				}
-				if resolved.Enabled != nil {
-					merged.Enabled = resolved.Enabled
-				}
-				resolved = merged
-			}
-		}
-		resolved.Inherit = ""
-		resolved.URL = templater.Replace(resolved.URL, cache)
-		resolved.Lock = templater.Replace(resolved.Lock, cache)
-		resolved.If = templater.Replace(resolved.If, cache)
-		new.Cache = resolved
 	}
 
 	if len(origTask.Cmds) > 0 {
@@ -300,6 +261,34 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 			newPrecondition.Msg = templater.Replace(precondition.Msg, cache)
 			new.Preconditions = append(new.Preconditions, newPrecondition)
 		}
+	}
+
+	// Resolve cache fields — CHECKSUM is already available from above.
+	if origTask.Cache != nil {
+		resolved := origTask.Cache.DeepCopy()
+		if resolved.Inherit != "" {
+			if model, ok := e.Taskfile.Caches[resolved.Inherit]; ok && model != nil {
+				merged := model.DeepCopy()
+				if resolved.URL != "" {
+					merged.URL = resolved.URL
+				}
+				if resolved.Lock != "" {
+					merged.Lock = resolved.Lock
+				}
+				if resolved.If != "" {
+					merged.If = resolved.If
+				}
+				if resolved.Enabled != nil {
+					merged.Enabled = resolved.Enabled
+				}
+				resolved = merged
+			}
+		}
+		resolved.Inherit = ""
+		resolved.URL = templater.Replace(resolved.URL, cache)
+		resolved.Lock = templater.Replace(resolved.Lock, cache)
+		resolved.If = templater.Replace(resolved.If, cache)
+		new.Cache = resolved
 	}
 
 	// We only care about templater errors if we are evaluating shell variables

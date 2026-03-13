@@ -43,11 +43,9 @@ func (e *Executor) ExportCache(zipPath string, calls ...*Call) error {
 		return err
 	}
 
-	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
-
 	// Collect all files to export by walking the task dependency tree
 	exportFiles := make(map[string]string) // path -> task name (for dedup)
-	if err := e.collectCacheFiles(checker, exportFiles, calls...); err != nil {
+	if err := e.collectCacheFiles(exportFiles, calls...); err != nil {
 		return err
 	}
 
@@ -125,7 +123,7 @@ func (e *Executor) ImportCache(zipPath string, calls ...*Call) error {
 
 // collectCacheFiles walks the task dependency tree and collects checksum files
 // and generated files for all up-to-date tasks.
-func (e *Executor) collectCacheFiles(checker *fingerprint.ChecksumChecker, files map[string]string, calls ...*Call) error {
+func (e *Executor) collectCacheFiles(files map[string]string, calls ...*Call) error {
 	for _, call := range calls {
 		t, err := e.CompiledTask(call)
 		if err != nil {
@@ -135,7 +133,7 @@ func (e *Executor) collectCacheFiles(checker *fingerprint.ChecksumChecker, files
 		if len(t.Sources) == 0 && len(t.Generates) == 0 {
 			// No fingerprint — still recurse into deps/setup
 		} else {
-			st, err := checker.Status(t)
+			st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
 			if err != nil {
 				return err
 			}
@@ -163,7 +161,7 @@ func (e *Executor) collectCacheFiles(checker *fingerprint.ChecksumChecker, files
 			if dep == nil {
 				continue
 			}
-			if err := e.collectCacheFiles(checker, files, &Call{Task: dep.Task, Vars: dep.Vars, Indirect: true}); err != nil {
+			if err := e.collectCacheFiles(files, &Call{Task: dep.Task, Vars: dep.Vars, Indirect: true}); err != nil {
 				return err
 			}
 		}
@@ -173,7 +171,7 @@ func (e *Executor) collectCacheFiles(checker *fingerprint.ChecksumChecker, files
 			if dep == nil {
 				continue
 			}
-			if err := e.collectCacheFiles(checker, files, &Call{Task: dep.Task, Vars: dep.Vars, Indirect: true}); err != nil {
+			if err := e.collectCacheFiles(files, &Call{Task: dep.Task, Vars: dep.Vars, Indirect: true}); err != nil {
 				return err
 			}
 		}
@@ -183,7 +181,7 @@ func (e *Executor) collectCacheFiles(checker *fingerprint.ChecksumChecker, files
 			if cmd == nil || cmd.Task == "" {
 				continue
 			}
-			if err := e.collectCacheFiles(checker, files, &Call{Task: cmd.Task, Vars: cmd.Vars, Indirect: true}); err != nil {
+			if err := e.collectCacheFiles(files, &Call{Task: cmd.Task, Vars: cmd.Vars, Indirect: true}); err != nil {
 				return err
 			}
 		}

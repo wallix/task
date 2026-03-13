@@ -32,16 +32,14 @@ func makeTask(name, dir string, sources, generates []*ast.Glob, cmds []*ast.Cmd)
 		Dirs:      []string{dir},
 		Sources:   sources,
 		Generates: generates,
-		Cmds:      cmds,
+		RawCmds:   cmds,
 	}
 }
 
-func mustSourceValue(t *testing.T, checker *ChecksumChecker, task *ast.Task) string {
+func mustSourceValue(t *testing.T, checker *ChecksumChecker) string {
 	t.Helper()
-	v, err := checker.SourceValue(task)
-	if err != nil {
-		t.Fatalf("SourceValue failed: %v", err)
-	}
+	v := checker.SourceValue()
+	require.NotEmpty(t, v)
 	return v
 }
 
@@ -71,7 +69,7 @@ func TestSerializeCmd(t *testing.T) {
 func TestFilterChecksumData(t *testing.T) {
 	t.Parallel()
 
-	checker := &ChecksumChecker{tempDir: t.TempDir()}
+	tempDir := t.TempDir()
 
 	t.Run("file sources become globs and srcrule data", func(t *testing.T) {
 		t.Parallel()
@@ -81,11 +79,11 @@ func TestFilterChecksumData(t *testing.T) {
 				{Glob: "*.txt", Negate: true},
 			},
 		}
-		globs, data := checker.filterChecksumData(task)
-		assert.Len(t, globs, 2)
-		assert.Equal(t, "*.go", globs[0].Glob)
-		assert.Contains(t, data, "srcrule:*.go")
-		assert.Contains(t, data, "srcrule:!*.txt")
+		checker := NewChecksumChecker(tempDir, task)
+		assert.Len(t, checker.sourcesGlobs, 2)
+		assert.Equal(t, "*.go", checker.sourcesGlobs[0].Glob)
+		assert.Contains(t, checker.srcData, "srcrule:*.go")
+		assert.Contains(t, checker.srcData, "srcrule:!*.txt")
 	})
 
 	t.Run("value sources go to data only", func(t *testing.T) {
@@ -96,24 +94,24 @@ func TestFilterChecksumData(t *testing.T) {
 				{Glob: "src.go"},
 			},
 		}
-		globs, data := checker.filterChecksumData(task)
-		assert.Len(t, globs, 1)
-		assert.Equal(t, "src.go", globs[0].Glob)
-		assert.Contains(t, data, "value:myval")
-		assert.Contains(t, data, "srcrule:src.go")
+		checker := NewChecksumChecker(tempDir, task)
+		assert.Len(t, checker.sourcesGlobs, 1)
+		assert.Equal(t, "src.go", checker.sourcesGlobs[0].Glob)
+		assert.Contains(t, checker.srcData, "value:myval")
+		assert.Contains(t, checker.srcData, "srcrule:src.go")
 	})
 
 	t.Run("commands are serialized", func(t *testing.T) {
 		t.Parallel()
 		task := &ast.Task{
-			Cmds: []*ast.Cmd{
+			RawCmds: []*ast.Cmd{
 				{Cmd: "echo hello"},
 				{Cmd: "go build"},
 			},
 		}
-		_, data := checker.filterChecksumData(task)
-		assert.Contains(t, data, "cmd[0]:echo hello")
-		assert.Contains(t, data, "cmd[1]:go build")
+		checker := NewChecksumChecker(tempDir, task)
+		assert.Contains(t, checker.srcData, "cmd[0]:echo hello")
+		assert.Contains(t, checker.srcData, "cmd[1]:go build")
 	})
 
 	t.Run("generates become genrule data", func(t *testing.T) {
@@ -124,9 +122,9 @@ func TestFilterChecksumData(t *testing.T) {
 				{Glob: "tmp/*", Negate: true},
 			},
 		}
-		_, data := checker.filterChecksumData(task)
-		assert.Contains(t, data, "genrule:out/*.bin")
-		assert.Contains(t, data, "genrule:!tmp/*")
+		checker := NewChecksumChecker(tempDir, task)
+		assert.Contains(t, checker.srcData, "genrule:out/*.bin")
+		assert.Contains(t, checker.srcData, "genrule:!tmp/*")
 	})
 
 	t.Run("data is sorted", func(t *testing.T) {
@@ -136,24 +134,22 @@ func TestFilterChecksumData(t *testing.T) {
 				{Glob: "z.go"},
 				{Glob: "a.go"},
 			},
-			Cmds: []*ast.Cmd{
+			RawCmds: []*ast.Cmd{
 				{Cmd: "make"},
 			},
 			Generates: []*ast.Glob{
 				{Glob: "out.bin"},
 			},
 		}
-		_, data := checker.filterChecksumData(task)
-		for i := 1; i < len(data); i++ {
-			assert.LessOrEqual(t, data[i-1], data[i], "data should be sorted")
+		checker := NewChecksumChecker(tempDir, task)
+		for i := 1; i < len(checker.srcData); i++ {
+			assert.LessOrEqual(t, checker.srcData[i-1], checker.srcData[i], "data should be sorted")
 		}
 	})
 }
 
 func TestSourceValueReturnsSourcesOnly(t *testing.T) {
 	t.Parallel()
-
-	checker := &ChecksumChecker{tempDir: t.TempDir()}
 
 	task := &ast.Task{
 		Task: "test-value",
@@ -165,8 +161,8 @@ func TestSourceValueReturnsSourcesOnly(t *testing.T) {
 		},
 	}
 
-	hash, err := checker.SourceValue(task)
-	require.NoError(t, err)
+	checker := NewChecksumChecker(t.TempDir(), task)
+	hash := checker.SourceValue()
 	assert.False(t, strings.Contains(hash, "\n"),
 		"SourceValue() should return sources-only hash without newline, got: %q", hash)
 	assert.NotEmpty(t, hash)
@@ -181,7 +177,7 @@ func TestRelativePathIndependence(t *testing.T) {
 	createFile(t, dirA, "hello.txt", "hello world")
 	createFile(t, dirB, "hello.txt", "hello world")
 
-	checker := NewChecksumChecker(t.TempDir())
+	tempDir := t.TempDir()
 
 	taskA := makeTask("test", dirA,
 		[]*ast.Glob{{Glob: "hello.txt"}},
@@ -190,8 +186,8 @@ func TestRelativePathIndependence(t *testing.T) {
 		[]*ast.Glob{{Glob: "hello.txt"}},
 		nil, nil)
 
-	hashA := mustSourceValue(t, checker, taskA)
-	hashB := mustSourceValue(t, checker, taskB)
+	hashA := mustSourceValue(t, NewChecksumChecker(tempDir, taskA))
+	hashB := mustSourceValue(t, NewChecksumChecker(tempDir, taskB))
 
 	if hashA != hashB {
 		t.Errorf("expected same checksum for identical relative layout, got %s vs %s", hashA, hashB)
@@ -204,15 +200,15 @@ func TestCommandStringInclusion(t *testing.T) {
 	dir := t.TempDir()
 	createFile(t, dir, "src.txt", "content")
 
-	checker := NewChecksumChecker(t.TempDir())
+	tempDir := t.TempDir()
 	sources := []*ast.Glob{{Glob: filepath.Join(dir, "src.txt")}}
 
 	taskNoCmds := makeTask("test", dir, sources, nil, nil)
 	taskWithCmds := makeTask("test", dir, sources, nil,
 		[]*ast.Cmd{{Cmd: "echo hello"}})
 
-	hashNoCmds := mustSourceValue(t, checker, taskNoCmds)
-	hashWithCmds := mustSourceValue(t, checker, taskWithCmds)
+	hashNoCmds := mustSourceValue(t, NewChecksumChecker(tempDir, taskNoCmds))
+	hashWithCmds := mustSourceValue(t, NewChecksumChecker(tempDir, taskWithCmds))
 
 	if hashNoCmds == hashWithCmds {
 		t.Error("expected checksum to change when commands are added")
@@ -220,7 +216,7 @@ func TestCommandStringInclusion(t *testing.T) {
 
 	taskDiffCmd := makeTask("test", dir, sources, nil,
 		[]*ast.Cmd{{Cmd: "echo goodbye"}})
-	hashDiffCmd := mustSourceValue(t, checker, taskDiffCmd)
+	hashDiffCmd := mustSourceValue(t, NewChecksumChecker(tempDir, taskDiffCmd))
 
 	if hashWithCmds == hashDiffCmd {
 		t.Error("expected checksum to change when command string changes")
@@ -234,15 +230,15 @@ func TestChecksumStability(t *testing.T) {
 	createFile(t, dir, "a.txt", "aaa")
 	createFile(t, dir, "b.txt", "bbb")
 
-	checker := NewChecksumChecker(t.TempDir())
+	tempDir := t.TempDir()
 	sources := []*ast.Glob{
 		{Glob: filepath.Join(dir, "a.txt")},
 		{Glob: filepath.Join(dir, "b.txt")},
 	}
 	task := makeTask("stable", dir, sources, nil, nil)
 
-	h1 := mustSourceValue(t, checker, task)
-	h2 := mustSourceValue(t, checker, task)
+	h1 := mustSourceValue(t, NewChecksumChecker(tempDir, task))
+	h2 := mustSourceValue(t, NewChecksumChecker(tempDir, task))
 
 	if h1 != h2 {
 		t.Errorf("checksum not stable: %s vs %s", h1, h2)
@@ -256,7 +252,7 @@ func TestSourceRuleChangesInvalidate(t *testing.T) {
 	createFile(t, dir, "data-a.txt", "same content")
 	createFile(t, dir, "data-b.txt", "same content")
 
-	checker := NewChecksumChecker(t.TempDir())
+	tempDir := t.TempDir()
 
 	taskA := makeTask("test", dir,
 		[]*ast.Glob{{Glob: "data-a.txt"}},
@@ -265,8 +261,8 @@ func TestSourceRuleChangesInvalidate(t *testing.T) {
 		[]*ast.Glob{{Glob: "data-b.txt"}},
 		nil, nil)
 
-	hashA := mustSourceValue(t, checker, taskA)
-	hashB := mustSourceValue(t, checker, taskB)
+	hashA := mustSourceValue(t, NewChecksumChecker(tempDir, taskA))
+	hashB := mustSourceValue(t, NewChecksumChecker(tempDir, taskB))
 
 	if hashA == hashB {
 		t.Error("expected different checksums when source glob patterns differ")
@@ -279,7 +275,7 @@ func TestGenerateRuleChangesInvalidate(t *testing.T) {
 	dir := t.TempDir()
 	createFile(t, dir, "src.txt", "src")
 
-	checker := NewChecksumChecker(t.TempDir())
+	tempDir := t.TempDir()
 	sources := []*ast.Glob{{Glob: filepath.Join(dir, "src.txt")}}
 
 	taskA := makeTask("test", dir, sources,
@@ -287,10 +283,128 @@ func TestGenerateRuleChangesInvalidate(t *testing.T) {
 	taskB := makeTask("test", dir, sources,
 		[]*ast.Glob{{Glob: "output-b.txt"}}, nil)
 
-	hashA := mustSourceValue(t, checker, taskA)
-	hashB := mustSourceValue(t, checker, taskB)
+	hashA := mustSourceValue(t, NewChecksumChecker(tempDir, taskA))
+	hashB := mustSourceValue(t, NewChecksumChecker(tempDir, taskB))
 
 	if hashA == hashB {
 		t.Error("expected different checksums when generate patterns differ")
 	}
+}
+
+// TestSourceValueUsesPrecomputedHash verifies that SourceValue returns
+// the precomputed t.SourceHash and that a checker with different commands
+// (raw vs resolved) uses whichever cmds are on the task at construction.
+func TestSourceValueUsesPrecomputedHash(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	createFile(t, dir, "src.txt", "content")
+
+	sources := []*ast.Glob{{Glob: filepath.Join(dir, "src.txt")}}
+
+	// Build a task with raw cmds and compute its hash
+	rawTask := makeTask("test", dir, sources, nil, []*ast.Cmd{{Cmd: "echo {{.FOO}}"}})
+	rawChecker := NewChecksumChecker(t.TempDir(), rawTask)
+	rawHash := rawChecker.SourceValue()
+	assert.NotEmpty(t, rawHash)
+
+	// Build a task with resolved cmds — different hash
+	resolvedTask := makeTask("test", dir, sources, nil, []*ast.Cmd{{Cmd: "echo bar"}})
+	resolvedChecker := NewChecksumChecker(t.TempDir(), resolvedTask)
+	resolvedHash := resolvedChecker.SourceValue()
+
+	assert.NotEqual(t, rawHash, resolvedHash,
+		"raw and resolved commands should produce different hashes")
+
+	// Precomputed hash on task should be returned without recomputation
+	resolvedTask.SourceHash = rawHash
+	precomputedChecker := NewChecksumChecker(t.TempDir(), resolvedTask)
+	assert.Equal(t, rawHash, precomputedChecker.SourceValue(),
+		"SourceValue should return precomputed SourceHash")
+}
+
+// TestConstructorDoesNotAccessDisk verifies that NewChecksumChecker does not
+// read from disk when t.SourceHash is already set. It uses a non-existent
+// directory — if the constructor tried to glob or hash files, it would fail
+// or produce a different hash.
+func TestConstructorDoesNotAccessDisk(t *testing.T) {
+	t.Parallel()
+
+	precomputed := "abc123"
+	task := &ast.Task{
+		Task: "no-disk",
+		Dirs: []string{"/non/existent/directory"},
+		Sources: []*ast.Glob{
+			{Glob: "*.go"},
+		},
+		RawCmds: []*ast.Cmd{
+			{Cmd: "echo build"},
+		},
+		SourceHash: precomputed,
+	}
+
+	checker := NewChecksumChecker(t.TempDir(), task)
+
+	// SourceValue must return the precomputed hash without touching disk.
+	assert.Equal(t, precomputed, checker.SourceValue(),
+		"SourceValue should return t.SourceHash without disk access")
+}
+
+// TestSourcesChangedDetectsDrift verifies that SourcesChanged detects
+// files modified between IsUpToDate and a later check.
+func TestSourcesChangedDetectsDrift(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	tempDir := t.TempDir()
+	srcPath := filepath.Join(dir, "src.txt")
+	createFile(t, dir, "src.txt", "original")
+
+	task := makeTask("drift", dir,
+		[]*ast.Glob{{Glob: srcPath}},
+		nil, nil,
+	)
+
+	checker := NewChecksumChecker(tempDir, task)
+
+	// IsUpToDate snapshots disk state
+	_, err := checker.IsUpToDate()
+	require.NoError(t, err)
+
+	// No changes yet
+	changed, err := checker.SourcesChanged()
+	require.NoError(t, err)
+	assert.False(t, changed, "sources should not have changed yet")
+
+	// Modify the source file
+	require.NoError(t, os.WriteFile(srcPath, []byte("modified"), 0o644))
+
+	// Now drift should be detected
+	changed, err = checker.SourcesChanged()
+	require.NoError(t, err)
+	assert.True(t, changed, "sources should be detected as changed after modification")
+}
+
+// TestSourceValueLazyComputesWhenNoPrecomputed verifies that SourceValue
+// computes from disk when t.SourceHash is empty (the compilation-time path).
+func TestSourceValueLazyComputesWhenNoPrecomputed(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	createFile(t, dir, "src.go", "package main")
+
+	task := makeTask("lazy", dir,
+		[]*ast.Glob{{Glob: filepath.Join(dir, "src.go")}},
+		nil,
+		[]*ast.Cmd{{Cmd: "go build"}},
+	)
+	// SourceHash deliberately left empty (zero value)
+
+	checker := NewChecksumChecker(t.TempDir(), task)
+	hash := checker.SourceValue()
+
+	assert.NotEmpty(t, hash, "SourceValue should lazily compute when SourceHash is empty")
+
+	// Second call should return the cached value
+	assert.Equal(t, hash, checker.SourceValue(), "SourceValue should be stable across calls")
 }

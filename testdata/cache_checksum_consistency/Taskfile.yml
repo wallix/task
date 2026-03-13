@@ -1,0 +1,18 @@
+version: '3'
+
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+  GREETING:
+    sh: echo "$GREETING"
+
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache:
+      url: 'file://{{.CACHE_DIR}}/build-{{.CHECKSUM}}.zip'
+    cmds:
+      - echo "{{.CHECKSUM}} {{.GREETING}}" > output.txt

@@ -134,8 +134,7 @@ func (e *Executor) cacheSave(t *ast.Task) {
 // cacheSaveFile collects generated files and writes them to a zip at the
 // given path. Skips writing if the archive already matches.
 func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
-	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
-	st, err := checker.Status(t)
+	st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
 	if err != nil || !st.UpToDate {
 		return
 	}
@@ -202,8 +201,7 @@ func (e *Executor) cacheRestoreRedis(t *ast.Task, u *url.URL) bool {
 
 // cacheSaveRedis builds a zip of generates and uploads to Redis.
 func (e *Executor) cacheSaveRedis(t *ast.Task, u *url.URL) {
-	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
-	st, err := checker.Status(t)
+	st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
 	if err != nil || !st.UpToDate {
 		return
 	}

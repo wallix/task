@@ -3437,6 +3437,119 @@ func TestCacheURLSafeTaskName(t *testing.T) {
 	}
 }
 
+func TestCacheChecksumConsistency(t *testing.T) {
+	dir := copyTestdata(t, "cache_checksum_consistency")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+	t.Setenv("GREETING", "hello")
+	tempDir := filepath.Join(dir, ".task")
+
+	run := func() string {
+		var buff bytes.Buffer
+		e := task.NewExecutor(
+			task.WithDir(dir),
+			task.WithStdout(&buff),
+			task.WithStderr(&buff),
+			task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+		)
+		require.NoError(t, e.Setup())
+		require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+		return buff.String()
+	}
+
+	readChecksum := func() string {
+		content, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+		require.NoError(t, err)
+		// output is "CHECKSUM GREETING", extract just the checksum
+		fields := strings.Fields(strings.TrimSpace(string(content)))
+		require.NotEmpty(t, fields)
+		return fields[0]
+	}
+
+	cacheZips := func() []string {
+		entries, err := os.ReadDir(cacheDir)
+		require.NoError(t, err)
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		return names
+	}
+
+	// First run — populates cache and output.txt
+	run()
+	origChecksum := readChecksum()
+	assert.NotEmpty(t, origChecksum)
+
+	// Cache zip should match the checksum from the command
+	zips := cacheZips()
+	require.Len(t, zips, 1)
+	assert.Equal(t, "build-"+origChecksum+".zip", zips[0],
+		"cache zip filename should contain the same CHECKSUM used in the command")
+
+	// Second run — task should be up-to-date (cached)
+	out := run()
+	assert.Contains(t, out, "up to date")
+
+	// Remove output.txt, run again — should restore from cache with same checksum
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+	out = run()
+	assert.Contains(t, out, "restored from cache")
+	assert.Equal(t, origChecksum, readChecksum(),
+		"restored output should contain the same CHECKSUM")
+
+	// Change the command in the Taskfile — checksum should differ
+	taskfilePath := filepath.Join(dir, "Taskfile.yml")
+	taskfileBytes, err := os.ReadFile(taskfilePath)
+	require.NoError(t, err)
+	modified := strings.Replace(string(taskfileBytes),
+		`echo "{{.CHECKSUM}} {{.GREETING}}" > output.txt`,
+		`printf "{{.CHECKSUM}} {{.GREETING}}" > output.txt`,
+		1)
+	require.NoError(t, os.WriteFile(taskfilePath, []byte(modified), 0o644))
+	require.NoError(t, os.RemoveAll(tempDir))
+	run()
+	cmdChangedChecksum := readChecksum()
+	assert.NotEqual(t, origChecksum, cmdChangedChecksum,
+		"changing a command should produce a different CHECKSUM")
+
+	// Restore original Taskfile, change input.txt — checksum should differ
+	require.NoError(t, os.WriteFile(taskfilePath, taskfileBytes, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("changed\n"), 0o644))
+	require.NoError(t, os.RemoveAll(tempDir))
+	run()
+	inputChangedChecksum := readChecksum()
+	assert.NotEqual(t, origChecksum, inputChangedChecksum,
+		"changing input should produce a different CHECKSUM")
+	assert.NotEqual(t, cmdChangedChecksum, inputChangedChecksum,
+		"cmd change and input change should produce different CHECKSUMs")
+
+	// Restore original input — checksum should match the original
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("hello\n"), 0o644))
+	require.NoError(t, os.RemoveAll(tempDir))
+	run()
+	assert.Equal(t, origChecksum, readChecksum(),
+		"restoring original values should produce the original CHECKSUM")
+
+	// Changing a variable value should NOT change the checksum —
+	// CHECKSUM is computed from raw command templates, not resolved commands.
+	// But the resolved output should differ, proving the variable was resolved.
+	t.Setenv("GREETING", "world")
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+	require.NoError(t, os.RemoveAll(cacheDir))
+	run()
+	assert.Equal(t, origChecksum, readChecksum(),
+		"changing a variable value should not change CHECKSUM (raw commands are checksummed)")
+	newOutput, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(newOutput), "world",
+		"resolved output should reflect the new variable value")
+	assert.NotContains(t, string(newOutput), "hello",
+		"resolved output should no longer contain the old variable value")
+}
+
 func TestSetupSourcesMergeIntoFingerprint(t *testing.T) {
 	// When a task has setup tasks with sources, those sources are merged
 	// into the parent task's Sources at runtime. Changing a setup task's

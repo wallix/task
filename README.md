@@ -57,7 +57,7 @@ tasks:
 
 #### Filesystem-based locking
 
-Tasks with `sources` and `generates` automatically acquire a POSIX advisory file lock (stored in `.task/`) to prevent concurrent execution of the same task.
+Tasks with `sources` and `generates` automatically acquire a POSIX advisory file lock (stored in `.task/`). The lock key is `taskname:sourcehash`, so different source states don't contend on the same lock.
 
 #### Redis-based distributed locking
 

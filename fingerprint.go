@@ -19,8 +19,6 @@ func (e *Executor) StatusJSON(calls ...*Call) error {
 }
 
 func (e *Executor) status(calls []*Call, asJSON bool) error {
-	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint)
-
 	var statuses []*fingerprint.TaskStatus
 	for _, call := range calls {
 		t, err := e.CompiledTask(call)
@@ -39,7 +37,7 @@ func (e *Executor) status(calls []*Call, asJSON bool) error {
 			continue
 		}
 
-		st, err := checker.Status(t)
+		st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
 		if err != nil {
 			return err
 		}

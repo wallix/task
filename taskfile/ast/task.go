@@ -51,6 +51,13 @@ type Task struct {
 	IncludedTaskfileVars *Vars
 
 	FullName string `hash:"ignore"`
+	// RawCmds holds the original unresolved command templates, set during
+	// compilation for stable checksumming independent of variable resolution.
+	RawCmds []*Cmd `hash:"ignore"`
+	// SourceHash is the checksum of sources + raw commands + generates,
+	// computed once during compilation and reused for locking, up-to-date
+	// checks, and cache keys. Excluded from hashing since it's derived.
+	SourceHash string `hash:"ignore"`
 }
 
 func (t *Task) Name() string {
@@ -254,6 +261,8 @@ func (t *Task) DeepCopy() *Task {
 		FullName:             t.FullName,
 		Watch:                t.Watch,
 		Failfast:             t.Failfast,
+		RawCmds:              deepcopy.Slice(t.RawCmds),
+		SourceHash:           t.SourceHash,
 	}
 	return c
 }

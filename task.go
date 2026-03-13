@@ -214,11 +214,20 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			return err
 		}
 
+		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t)
+		sourceHash := t.SourceHash
+
 		// Lock tasks that have fingerprint state (sources + generates).
 		// The lock covers deps, fingerprint check, execution, and
 		// SetUpToDate to prevent races between concurrent processes.
+		// The lock key includes the source checksum so that different
+		// inputs don't contend on the same lock.
 		// If cache.lock is configured, use the remote locker instead.
 		if !e.Dry && len(t.Sources) > 0 && len(t.Generates) > 0 {
+			lockName := t.Name()
+			if sourceHash != "" {
+				lockName = t.Name() + ":" + sourceHash
+			}
 			locker := e.Locker
 			if e.cacheEnabled(t) {
 				if cacheLocker := e.evalCacheLocker(t); cacheLocker != nil {
@@ -228,10 +237,10 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			onContention := func() {
 				e.Logger.Errf(logger.Yellow, "task: waiting for lock on %q\n", t.Name())
 			}
-			unlock, err := locker.Lock(t.Name(), onContention)
+			unlock, err := locker.Lock(lockName, onContention)
 			if err != nil && locker != e.Locker {
 				e.Logger.VerboseErrf(logger.Yellow, "task: remote lock failed for %q: %v (falling back to local)\n", t.Name(), err)
-				unlock, err = e.Locker.Lock(t.Name(), onContention)
+				unlock, err = e.Locker.Lock(lockName, onContention)
 			}
 			if err != nil {
 				return err
@@ -243,7 +252,6 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			return err
 		}
 
-		var sourceHash string
 		skipFingerprinting := e.ForceAll || (!call.Indirect && e.Force)
 		cacheActive := e.cacheEnabled(t)
 		if !skipFingerprinting {
@@ -256,8 +264,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 				return err
 			}
 
-			var upToDate bool
-			upToDate, sourceHash, err = fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).IsUpToDate(t)
+			upToDate, err := checker.IsUpToDate()
 			if err != nil {
 				return err
 			}
@@ -277,7 +284,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			// If the cache provides the generates, re-check fingerprint.
 			if cacheActive && !e.Dry && sourceHash != "" {
 				if e.cacheRestore(t) {
-					if err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).SetUpToDate(t, ""); err != nil {
+					if err := checker.SetUpToDate(); err != nil {
 						return err
 					}
 					return nil
@@ -310,7 +317,7 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			}
 
 			if err := e.runCommand(ctx, t, call, i); err != nil {
-				if err2 := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).OnError(t); err2 != nil {
+				if err2 := checker.OnError(); err2 != nil {
 					e.Logger.VerboseErrf(logger.Yellow, "task: error cleaning status on error: %v\n", err2)
 				}
 
@@ -327,11 +334,23 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			}
 		}
 		if !e.Dry {
-			if err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint).SetUpToDate(t, sourceHash); err != nil {
+			// Check if sources were modified during execution
+			changed, err := checker.SourcesChanged()
+			if err != nil {
 				return err
 			}
-			if cacheActive && sourceHash != "" {
-				e.cacheSave(t)
+			if changed {
+				e.Logger.VerboseErrf(logger.Yellow, "task: sources changed during execution of %q, skipping fingerprint and cache update\n", t.Name())
+				// Remove stale checksum file so the next run doesn't
+				// incorrectly find the task up to date.
+				_ = checker.OnError()
+			} else {
+				if err := checker.SetUpToDate(); err != nil {
+					return err
+				}
+				if cacheActive && sourceHash != "" {
+					e.cacheSave(t)
+				}
 			}
 		}
 		e.Logger.VerboseErrf(logger.Magenta, "task: %q finished\n", call.Task)
