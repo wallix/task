@@ -144,13 +144,8 @@ func init() {
 	pflag.StringVar(&ExportCache, "export-cache", "", "Exports generated files and fingerprint state to a zip file.")
 	pflag.StringVar(&ImportCache, "import-cache", "", "Imports generated files and fingerprint state from a zip file.")
 
-	// Gentle force experiment will override the force flag and add a new force-all flag
-	if experiments.GentleForce.Enabled() {
-		pflag.BoolVarP(&Force, "force", "f", false, "Forces execution of the directly called task.")
-		pflag.BoolVar(&ForceAll, "force-all", false, "Forces execution of the called task and all its dependant tasks.")
-	} else {
-		pflag.BoolVarP(&ForceAll, "force", "f", false, "Forces execution even when the task is up-to-date.")
-	}
+	pflag.BoolVarP(&Force, "force", "f", false, "Forces execution of the directly called task.")
+	pflag.BoolVar(&ForceAll, "force-all", false, "Forces execution of the called task and all its dependant tasks.")
 
 	pflag.Parse()
 

@@ -2832,7 +2832,6 @@ func TestForce(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		env      map[string]string
 		force    bool
 		forceAll bool
 	}{
@@ -2843,20 +2842,6 @@ func TestForce(t *testing.T) {
 		{
 			name:     "force-all",
 			forceAll: true,
-		},
-		{
-			name:  "force with gentle force experiment",
-			force: true,
-			env: map[string]string{
-				"TASK_X_GENTLE_FORCE": "1",
-			},
-		},
-		{
-			name:     "force-all with gentle force experiment",
-			forceAll: true,
-			env: map[string]string{
-				"TASK_X_GENTLE_FORCE": "1",
-			},
 		},
 	}
 	for _, tt := range tests {

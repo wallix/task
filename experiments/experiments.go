@@ -16,7 +16,6 @@ const envPrefix = "TASK_X_"
 
 // Active experiments.
 var (
-	GentleForce   Experiment
 	EnvPrecedence Experiment
 )
 
@@ -39,7 +38,6 @@ func ParseWithConfig(dir string, config *ast.TaskRC) {
 	// Read any .env files
 	readDotEnv(dir)
 	// Initialize the experiments
-	GentleForce = New("GENTLE_FORCE", config, 1)
 	EnvPrecedence = New("ENV_PRECEDENCE", config, 1)
 	AnyVariables = New("ANY_VARIABLES", config)
 	MapVariables = New("MAP_VARIABLES", config)

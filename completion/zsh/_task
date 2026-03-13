@@ -75,7 +75,8 @@ _task() {
         '(-C --concurrency)'{-C,--concurrency}'[limit number of concurrent tasks]: '
         '(-p --parallel)'{-p,--parallel}'[run command-line tasks in parallel]'
         '(-F --failfast)'{-F,--failfast}'[when running tasks in parallel, stop all tasks if one fails]'
-        '(-f --force)'{-f,--force}'[run even if task is up-to-date]'
+        '(-f --force)'{-f,--force}'[force execution of the directly called task]'
+        '(--force-all)--force-all[force execution of task and all dependencies]'
         '(-c --color)'{-c,--color}'[colored output]'
         '(--completion)--completion[generate shell completion script]:shell:(bash zsh fish powershell)'
         '(-d --dir)'{-d,--dir}'[dir to run in]:execution dir:_dirs'
@@ -104,12 +105,6 @@ _task() {
         '(-w --watch)'{-w,--watch}'[watch-mode for given tasks, re-run when inputs change]'
         '(-y --yes)'{-y,--yes}'[assume yes to all prompts]'
     )
-
-    # Experimental flags (dynamically added based on enabled experiments)
-    # Options (modify behavior)
-    if __task_is_experiment_enabled "GENTLE_FORCE"; then
-        standard_args+=('(--force-all)--force-all[force execution of task and all dependencies]')
-    fi
 
     operation_args=(
         # Task names completion (can be specified multiple times)

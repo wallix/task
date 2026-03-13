@@ -10,10 +10,6 @@
         "ENV_PRECEDENCE": {
           "type": "number",
           "enum": [0, 1]
-        },
-        "GENTLE_FORCE": {
-          "type": "number",
-          "enum": [0, 1]
         }
       }
     },

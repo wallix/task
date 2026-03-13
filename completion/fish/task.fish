@@ -76,7 +76,8 @@ complete -c $GO_TASK_PROGNAME -s n -l dry                       -d 'compile and 
 complete -c $GO_TASK_PROGNAME -s x -l exit-code                 -d 'pass-through exit code of task command'
 complete -c $GO_TASK_PROGNAME      -l experiments               -d 'list available experiments'
 complete -c $GO_TASK_PROGNAME -s F -l failfast                  -d 'when running tasks in parallel, stop all tasks if one fails'
-complete -c $GO_TASK_PROGNAME -s f -l force                     -d 'force execution even when up-to-date'
+complete -c $GO_TASK_PROGNAME -s f -l force                     -d 'force execution of the directly called task'
+complete -c $GO_TASK_PROGNAME      -l force-all                  -d 'force execution of task and all dependencies'
 complete -c $GO_TASK_PROGNAME -s g -l global                    -d 'run global Taskfile from home directory'
 complete -c $GO_TASK_PROGNAME -s h -l help                      -d 'show help'
 complete -c $GO_TASK_PROGNAME -s i -l init                      -d 'create new Taskfile'
@@ -102,7 +103,4 @@ complete -c $GO_TASK_PROGNAME      -l version                   -d 'show version
 complete -c $GO_TASK_PROGNAME -s w -l watch                     -d 'watch mode, re-run on changes'
 complete -c $GO_TASK_PROGNAME -s y -l yes                       -d 'assume yes to all prompts'
 
-# Experimental flags (dynamically checked at completion time via -n condition)
-# GentleForce experiment
-complete -c $GO_TASK_PROGNAME -n "__task_is_experiment_enabled GENTLE_FORCE" -l force-all -d 'force execution of task and all dependencies'
 

@@ -23,8 +23,9 @@ Register-ArgumentCompleter -CommandName task -ScriptBlock {
 			[CompletionResult]::new('--experiments', '--experiments', [CompletionResultType]::ParameterName, 'list experiments'),
 			[CompletionResult]::new('-F', '-F', [CompletionResultType]::ParameterName, 'fail fast on pallalel tasks'),
 			[CompletionResult]::new('--failfast', '--failfast', [CompletionResultType]::ParameterName, 'force execution'),
-			[CompletionResult]::new('-f', '-f', [CompletionResultType]::ParameterName, 'force execution'),
-			[CompletionResult]::new('--force', '--force', [CompletionResultType]::ParameterName, 'force execution'),
+			[CompletionResult]::new('-f', '-f', [CompletionResultType]::ParameterName, 'force execution of the directly called task'),
+			[CompletionResult]::new('--force', '--force', [CompletionResultType]::ParameterName, 'force execution of the directly called task'),
+			[CompletionResult]::new('--force-all', '--force-all', [CompletionResultType]::ParameterName, 'force execution of task and all dependencies'),
 			[CompletionResult]::new('-g', '-g', [CompletionResultType]::ParameterName, 'run global Taskfile'),
 			[CompletionResult]::new('--global', '--global', [CompletionResultType]::ParameterName, 'run global Taskfile'),
 			[CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'show help'),
@@ -63,13 +64,6 @@ Register-ArgumentCompleter -CommandName task -ScriptBlock {
 			[CompletionResult]::new('-y', '-y', [CompletionResultType]::ParameterName, 'assume yes'),
 			[CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'assume yes')
 		)
-
-		# Experimental flags (dynamically added based on enabled experiments)
-		$experiments = & task --experiments 2>$null | Out-String
-
-		if ($experiments -match '\* GENTLE_FORCE:.*on') {
-			$completions += [CompletionResult]::new('--force-all', '--force-all', [CompletionResultType]::ParameterName, 'force all dependencies')
-		}
 
 		return $completions.Where{ $_.CompletionText.StartsWith($commandName) }
 	}

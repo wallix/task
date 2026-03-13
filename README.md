@@ -95,6 +95,10 @@ task --import-cache state.zip
 
 Exports checksum state and generated files for up-to-date tasks as a ZIP archive.
 
+### Changed
+
+- **`--force` is now gentle by default** -- `--force` only forces the directly called task; dependent tasks still check their status. Use `--force-all` to force everything (previously the default `--force` behavior). The `TASK_X_GENTLE_FORCE` experiment flag has been removed.
+
 ### Improved
 
 - **Richer fingerprints** -- checksums now include serialized commands and variable data, not just file contents.
