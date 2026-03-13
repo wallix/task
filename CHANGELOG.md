@@ -3,8 +3,40 @@
 ## v3.50.0 - 2026-03-13
 
 This is a fork of [Task](https://taskfile.dev) maintained by WALLIX.
+Based on Task v3.49.1.
 
-- Based on Task v3.49.1.
+### Breaking changes
+
+- Removed remote Taskfiles support.
+- Removed timestamp-based fingerprinting — only checksum-based fingerprinting
+  remains.
+- Module path changed to `github.com/wallix/task`.
+- The `gentle-force` experiment is now the default behavior.
+
+### Features
+
+- Added `setup` field for unconditional pre-fingerprint task dependencies.
+  Setup task sources are merged into the parent task's fingerprint.
+- Added per-task caching (`cache` block) with `file://` and `redis://` backends,
+  including distributed locking via Redis.
+- Added `--status` flag for fingerprint diagnostics (shows hash state per task).
+- Added `--export-cache` and `--import-cache` for portable fingerprint state.
+- Added `urlsafe` template function for safe use in cache URLs and paths.
+- `CHECKSUM` is now stable across variable resolution — only changes to command
+  templates, source files, or generate patterns invalidate it.
+
+### Fixes
+
+- Fixed directory doubling bug with directory stack pattern.
+- Tasks with `generates` but no `sources` no longer run fingerprinting.
+
+### Internal
+
+- Simplified fingerprinting: removed abstraction layer, status checker,
+  and the `none` fingerprint method.
+- Sources and generates hashes are tracked separately.
+- Replaced GoReleaser with native GitHub Actions build matrix.
+- Removed website, kept docs and schemas at repo root.
 
 ## v3.49.1 - 2026-03-08
 
