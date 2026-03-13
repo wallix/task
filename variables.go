@@ -291,6 +291,19 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		new.Cache = resolved
 	}
 
+	// Validate that cached tasks don't reference generates outside the
+	// project root — such paths would escape the archive on extraction.
+	if e.cacheEnabled(&new) && e.Dir != "" {
+		taskDir := new.ComputeDir()
+		for _, g := range new.Generates {
+			resolved := filepathext.SmartJoin(taskDir, g.Glob)
+			rel, err := filepath.Rel(e.Dir, resolved)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				return nil, fmt.Errorf("task: %s: generates path %q is outside project root %q; caching requires all outputs to be within the project directory", new.Task, g.Glob, e.Dir)
+			}
+		}
+	}
+
 	// We only care about templater errors if we are evaluating shell variables
 	if evaluateShVars && cache.Err() != nil {
 		return &new, cache.Err()

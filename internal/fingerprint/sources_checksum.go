@@ -48,6 +48,7 @@ func serializeCmd(idx int, c *ast.Cmd) string {
 
 func (c *ChecksumChecker) buildChecksumData() ([]*ast.Glob, []string) {
 	t := c.task
+	dir := t.ComputeDir()
 	var sources []*ast.Glob
 	var data []string
 	for _, source := range t.Sources {
@@ -55,7 +56,7 @@ func (c *ChecksumChecker) buildChecksumData() ([]*ast.Glob, []string) {
 			data = append(data, source.Glob)
 		} else {
 			sources = append(sources, source)
-			s := source.Glob
+			s := relGlob(dir, source.Glob)
 			if source.Negate {
 				s = "!" + s
 			}
@@ -69,7 +70,7 @@ func (c *ChecksumChecker) buildChecksumData() ([]*ast.Glob, []string) {
 		data = append(data, serializeCmd(i, cmd))
 	}
 	for _, genRule := range t.Generates {
-		s := genRule.Glob
+		s := relGlob(dir, genRule.Glob)
 		if genRule.Negate {
 			s = "!" + s
 		}
@@ -77,6 +78,17 @@ func (c *ChecksumChecker) buildChecksumData() ([]*ast.Glob, []string) {
 	}
 	sort.Strings(data)
 	return sources, data
+}
+
+// relGlob returns glob relative to dir. This ensures checksums are stable
+// across different workspace paths (e.g. CI runners with different base
+// directories). The result may start with "../" when the glob is outside
+// dir — that's fine because the relative path is still deterministic.
+func relGlob(dir, glob string) string {
+	if rel, err := filepath.Rel(dir, glob); err == nil {
+		return rel
+	}
+	return glob
 }
 
 // TaskStatus holds the fingerprint state and up-to-date status for a task.

@@ -3550,6 +3550,49 @@ func TestCacheChecksumConsistency(t *testing.T) {
 		"resolved output should no longer contain the old variable value")
 }
 
+func TestCacheRejectsGeneratesOutsideRootDir(t *testing.T) {
+	t.Parallel()
+
+	// When cache is enabled and generates reference files outside the
+	// project root, task compilation must fail early rather than producing
+	// a zip with path-traversal entries.
+	dir := t.TempDir()
+	outsideDir := t.TempDir()
+	cacheDir := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(outsideDir, "escaped.txt"), []byte("escaped"), 0o644))
+
+	// Generates points to a directory outside the project root, cache enabled
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(fmt.Sprintf(`version: '3'
+tasks:
+  build:
+    sources:
+      - input.txt
+    generates:
+      - "%s/escaped.txt"
+    cache:
+      url: "file://%s/build-{{.CHECKSUM}}.zip"
+    cmds:
+      - echo ok
+`, outsideDir, cacheDir)), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Run should fail at compilation because generates escape the project root
+	err := e.Run(t.Context(), &task.Call{Task: "build"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outside project root")
+}
+
 func TestSetupSourcesMergeIntoFingerprint(t *testing.T) {
 	// When a task has setup tasks with sources, those sources are merged
 	// into the parent task's Sources at runtime. Changing a setup task's

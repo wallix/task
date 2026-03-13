@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/wallix/task/v3/internal/fingerprint"
 	"github.com/wallix/task/v3/internal/logger"
@@ -205,10 +206,14 @@ func addFileToZip(zw *zip.Writer, baseDir, filePath string) error {
 		return err
 	}
 
-	// Store relative path
+	// Store relative path — reject files outside baseDir to prevent
+	// archive entries that would escape the extraction directory.
 	rel, err := filepath.Rel(baseDir, filePath)
 	if err != nil {
-		rel = filePath
+		return fmt.Errorf("cannot relativize %s to %s: %w", filePath, baseDir, err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("file %s is outside project root %s", filePath, baseDir)
 	}
 	header.Name = rel
 

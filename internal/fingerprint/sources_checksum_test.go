@@ -43,6 +43,30 @@ func mustSourceValue(t *testing.T, checker *ChecksumChecker) string {
 	return v
 }
 
+func TestRelGlob(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		dir      string
+		glob     string
+		expected string
+	}{
+		{"relative stays relative", "/work", "src/*.go", "src/*.go"},
+		{"absolute under dir is relativized", "/work", "/work/src/*.go", "src/*.go"},
+		{"absolute outside dir uses dotdot", "/work/tasks", "/work/src/*.go", "../src/*.go"},
+		{"nested absolute", "/builds/abc/git/wab", "/builds/abc/git/wab/src/**/*.po", "src/**/*.po"},
+		{"sibling directory", "/builds/abc/git/wab/tasks", "/builds/abc/git/wab/src/**/*.po", "../src/**/*.po"},
+		{"dir itself", "/work", "/work", "."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, relGlob(tt.dir, tt.glob))
+		})
+	}
+}
+
 func TestNormalizeFilename(t *testing.T) {
 	t.Parallel()
 
@@ -127,6 +151,27 @@ func TestFilterChecksumData(t *testing.T) {
 		assert.Contains(t, checker.srcData, "genrule:!tmp/*")
 	})
 
+	t.Run("absolute source paths are relativized", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		task := &ast.Task{
+			Dirs: []string{dir},
+			Sources: []*ast.Glob{
+				{Glob: filepath.Join(dir, "src/**/*.go")},
+			},
+			Generates: []*ast.Glob{
+				{Glob: filepath.Join(dir, "build/**/*")},
+			},
+		}
+		checker := NewChecksumChecker(tempDir, task)
+		assert.Contains(t, checker.srcData, "srcrule:src/**/*.go",
+			"absolute source path should be relativized to task dir")
+		assert.Contains(t, checker.srcData, "genrule:build/**/*",
+			"absolute generates path should be relativized to task dir")
+		assert.NotContains(t, checker.srcData, "srcrule:"+filepath.Join(dir, "src/**/*.go"),
+			"absolute path should not appear in data")
+	})
+
 	t.Run("data is sorted", func(t *testing.T) {
 		t.Parallel()
 		task := &ast.Task{
@@ -192,6 +237,116 @@ func TestRelativePathIndependence(t *testing.T) {
 	if hashA != hashB {
 		t.Errorf("expected same checksum for identical relative layout, got %s vs %s", hashA, hashB)
 	}
+}
+
+// TestAbsolutePathStabilityAcrossWorkspaces simulates two CI runners with
+// different workspace paths but identical file contents. Sources and generates
+// use absolute paths (as happens when {{ .ROOTDIR }} is resolved). The
+// checksums must be identical despite the different base directories.
+func TestAbsolutePathStabilityAcrossWorkspaces(t *testing.T) {
+	t.Parallel()
+
+	// Simulate two CI runners with different workspace paths
+	runnerA := t.TempDir() // e.g. /builds/abc123/0/git/wab
+	runnerB := t.TempDir() // e.g. /builds/def456/0/git/wab
+
+	// Create identical file trees
+	for _, dir := range []string{runnerA, runnerB} {
+		createFile(t, dir, "src/main.go", "package main")
+		createFile(t, dir, "src/util.go", "package main")
+		createFile(t, dir, "build/app", "binary")
+	}
+
+	tempDir := t.TempDir()
+
+	// Tasks use absolute paths (as resolved from {{ .ROOTDIR }}/src/**/*.go)
+	taskA := makeTask("compile", runnerA,
+		[]*ast.Glob{{Glob: filepath.Join(runnerA, "src/**/*.go")}},
+		[]*ast.Glob{{Glob: filepath.Join(runnerA, "build/**/*")}},
+		[]*ast.Cmd{{Cmd: "go build -o build/app ."}},
+	)
+	taskB := makeTask("compile", runnerB,
+		[]*ast.Glob{{Glob: filepath.Join(runnerB, "src/**/*.go")}},
+		[]*ast.Glob{{Glob: filepath.Join(runnerB, "build/**/*")}},
+		[]*ast.Cmd{{Cmd: "go build -o build/app ."}},
+	)
+
+	hashA := mustSourceValue(t, NewChecksumChecker(tempDir, taskA))
+	hashB := mustSourceValue(t, NewChecksumChecker(tempDir, taskB))
+
+	assert.Equal(t, hashA, hashB,
+		"checksums must be identical across workspaces with same relative layout")
+}
+
+// TestAbsolutePathStabilityWithSubdir tests that a task whose ComputeDir
+// is a subdirectory (e.g. tasks/) but whose sources use ROOTDIR-prefixed
+// absolute paths (../src/...) produces stable checksums across workspaces.
+func TestAbsolutePathStabilityWithSubdir(t *testing.T) {
+	t.Parallel()
+
+	runnerA := t.TempDir()
+	runnerB := t.TempDir()
+
+	for _, root := range []string{runnerA, runnerB} {
+		createFile(t, root, "src/notifier/locale/en/notifier.po", "msgid \"hello\"")
+		// Create the tasks/ subdir as the task's working directory
+		require.NoError(t, os.MkdirAll(filepath.Join(root, "tasks"), 0o755))
+	}
+
+	tempDir := t.TempDir()
+
+	// Task dir is root/tasks/ but sources reference root/src/ via absolute path
+	taskA := makeTask("compile:notifier", filepath.Join(runnerA, "tasks"),
+		[]*ast.Glob{{Glob: filepath.Join(runnerA, "src/notifier/locale/*/notifier.po")}},
+		[]*ast.Glob{{Glob: filepath.Join(runnerA, "src/notifier/locale/*/notifier.mo")}},
+		[]*ast.Cmd{{Cmd: "msgfmt -vv {{.ITEM}}"}},
+	)
+	taskB := makeTask("compile:notifier", filepath.Join(runnerB, "tasks"),
+		[]*ast.Glob{{Glob: filepath.Join(runnerB, "src/notifier/locale/*/notifier.po")}},
+		[]*ast.Glob{{Glob: filepath.Join(runnerB, "src/notifier/locale/*/notifier.mo")}},
+		[]*ast.Cmd{{Cmd: "msgfmt -vv {{.ITEM}}"}},
+	)
+
+	hashA := mustSourceValue(t, NewChecksumChecker(tempDir, taskA))
+	hashB := mustSourceValue(t, NewChecksumChecker(tempDir, taskB))
+
+	assert.Equal(t, hashA, hashB,
+		"checksums must be identical even when task dir is a subdirectory and sources use parent paths")
+}
+
+// TestAbsolutePathStabilityWithMixedSources tests that a task with both
+// relative and absolute source paths produces stable checksums across
+// different workspace roots.
+func TestAbsolutePathStabilityWithMixedSources(t *testing.T) {
+	t.Parallel()
+
+	runnerA := t.TempDir()
+	runnerB := t.TempDir()
+
+	for _, dir := range []string{runnerA, runnerB} {
+		createFile(t, dir, "package.json", `{"name":"test"}`)
+		createFile(t, dir, "src/notifier/locale/en/notifier.po", "msgid \"hello\"")
+	}
+
+	tempDir := t.TempDir()
+
+	// Mix of relative and absolute paths (as happens in real Taskfiles)
+	taskA := makeTask("compile:notifier", runnerA,
+		[]*ast.Glob{{Glob: filepath.Join(runnerA, "src/notifier/locale/*/notifier.po")}},
+		[]*ast.Glob{{Glob: filepath.Join(runnerA, "src/notifier/locale/*/notifier.mo")}},
+		[]*ast.Cmd{{Cmd: "msgfmt -vv {{.ITEM}}"}},
+	)
+	taskB := makeTask("compile:notifier", runnerB,
+		[]*ast.Glob{{Glob: filepath.Join(runnerB, "src/notifier/locale/*/notifier.po")}},
+		[]*ast.Glob{{Glob: filepath.Join(runnerB, "src/notifier/locale/*/notifier.mo")}},
+		[]*ast.Cmd{{Cmd: "msgfmt -vv {{.ITEM}}"}},
+	)
+
+	hashA := mustSourceValue(t, NewChecksumChecker(tempDir, taskA))
+	hashB := mustSourceValue(t, NewChecksumChecker(tempDir, taskB))
+
+	assert.Equal(t, hashA, hashB,
+		"checksums must be identical for same relative layout with absolute source paths")
 }
 
 func TestCommandStringInclusion(t *testing.T) {
