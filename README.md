@@ -36,6 +36,62 @@ tasks:
       - go build -ldflags "-X main.buildDate=$(cat version.txt)" -o bin/app .
 ```
 
+#### Fingerprint-based generates
+
+For large generated directories where hashing every file is expensive, a `generates` entry can specify a **fingerprint** file -- a single representative file used for checksum-based up-to-date detection instead of hashing every file matched by the glob. The full glob is still used for cache operations (save/restore), so all files are archived correctly.
+
+Three YAML forms are supported in `generates`:
+
+```yaml
+generates:
+  # Scalar: simple glob pattern (hashes all matched files)
+  - "build/**/*"
+
+  # Exclude: negated pattern
+  - exclude: "build/tmp/**"
+
+  # Glob + fingerprint: the glob defines the full set of files for caching,
+  # while fingerprint names a single file for up-to-date checks.
+  - glob: "node_modules/**/*"
+    fingerprint: "node_modules/.yarn-state.yml"
+```
+
+**Example: yarn install with fingerprint**
+
+```yaml
+tasks:
+  install:
+    sources:
+      - package.json
+      - yarn.lock
+    generates:
+      - glob: "node_modules/**/*"
+        fingerprint: "node_modules/.yarn-state.yml"
+    cmds:
+      - yarn install --immutable
+```
+
+Here `node_modules/` may contain thousands of files, but only `.yarn-state.yml` is hashed for staleness checks. When caching is enabled, the full `node_modules/**/*` glob (plus the fingerprint dotfile) is archived.
+
+**Example: mixed generates with caching**
+
+```yaml
+tasks:
+  build:
+    sources:
+      - src/**/*.ts
+      - package.json
+    generates:
+      - "dist/**/*"
+      - glob: "node_modules/**/*"
+        fingerprint: "node_modules/.yarn-state.yml"
+      - exclude: "dist/tmp/**"
+    cache:
+      url: 'file:///tmp/cache/build-{{.CHECKSUM}}.zip'
+    cmds:
+      - npm run build
+```
+
 #### Per-task cache block (`file://` and `redis://` backends)
 
 Cache generated files so that subsequent runs (or other machines) can skip execution entirely. The `url` and `lock` fields are Go templates with access to all task variables plus `{{.CHECKSUM}}` (SHA256 of sources, commands, and generates).

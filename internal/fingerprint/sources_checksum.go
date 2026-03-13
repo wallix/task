@@ -91,6 +91,7 @@ type TaskStatus struct {
 	SourceData        []string `json:"source_data,omitempty"`
 	GeneratesHash     string   `json:"generates_hash,omitempty"`
 	GenerateFiles     []string `json:"generate_files,omitempty"`
+	CacheFiles        []string `json:"cache_files,omitempty"` // files to include in cache (full glob, ignoring fingerprint)
 }
 
 func (c *ChecksumChecker) IsUpToDate() (bool, error) {
@@ -156,6 +157,7 @@ func (c *ChecksumChecker) Status() (*TaskStatus, error) {
 
 	sourcesFiles, _ := Globs(c.task.ComputeDir(), c.sourcesGlobs)
 	generates, _ := Globs(c.task.ComputeDir(), c.task.Generates)
+	cacheFiles, _ := CacheGlobs(c.task.ComputeDir(), c.task.Generates)
 
 	srcOK := oldSourcesHash == currentSourcesHash
 	genOK := oldGeneratesHash == newGeneratesHash
@@ -171,6 +173,7 @@ func (c *ChecksumChecker) Status() (*TaskStatus, error) {
 		SourceData:        c.srcData,
 		GeneratesHash:     oldGeneratesHash,
 		GenerateFiles:     generates,
+		CacheFiles:        cacheFiles,
 	}, nil
 }
 

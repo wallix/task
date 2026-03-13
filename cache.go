@@ -149,8 +149,8 @@ func (e *Executor) collectCacheFiles(files map[string]string, calls ...*Call) er
 						files[st.ChecksumFile] = t.Name()
 					}
 				}
-				// Add generated files
-				for _, f := range st.GenerateFiles {
+				// Add cache files (generates expanded via cache_dir)
+				for _, f := range st.CacheFiles {
 					files[f] = t.Name()
 				}
 			}

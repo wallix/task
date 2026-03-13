@@ -108,8 +108,9 @@ func ReplaceGlobs(globs []*ast.Glob, cache *Cache) []*ast.Glob {
 	new := make([]*ast.Glob, len(globs))
 	for i, g := range globs {
 		new[i] = &ast.Glob{
-			Glob:   Replace(g.Glob, cache),
-			Negate: g.Negate,
+			Glob:        Replace(g.Glob, cache),
+			Negate:      g.Negate,
+			Fingerprint: Replace(g.Fingerprint, cache),
 		}
 	}
 	return new

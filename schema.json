@@ -620,6 +620,14 @@
         "exclude": {
           "description": "File or glob pattern to exclude from the list",
           "type": "string"
+        },
+        "glob": {
+          "description": "Glob pattern matching the full set of generated files (used for caching)",
+          "type": "string"
+        },
+        "fingerprint": {
+          "description": "A single representative file used for checksum-based up-to-date detection instead of hashing every file matched by the glob. Requires 'glob' to be set.",
+          "type": "string"
         }
       },
       "additionalProperties": false

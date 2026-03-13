@@ -139,7 +139,7 @@ func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
 		return
 	}
 
-	files := st.GenerateFiles
+	files := st.CacheFiles
 	if len(files) == 0 {
 		return
 	}
@@ -205,7 +205,7 @@ func (e *Executor) cacheSaveRedis(t *ast.Task, u *url.URL) {
 	if err != nil || !st.UpToDate {
 		return
 	}
-	files := st.GenerateFiles
+	files := st.CacheFiles
 	if len(files) == 0 {
 		return
 	}
