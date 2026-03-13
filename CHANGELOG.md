@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.52.0 - 2026-03-13
+
+### Features
+
+- Add `fingerprint` field on `generates` entries for selective checksum
+  hashing. A `generates` entry can now use the `glob` + `fingerprint` YAML form
+  where the glob defines the full set of files for caching, while a single
+  representative file is used for up-to-date checks. This avoids hashing
+  thousands of files (e.g. `node_modules/`) when a marker file reliably
+  indicates staleness.
+
+  ```yaml
+  generates:
+    - glob: "node_modules/**/*"
+      fingerprint: "node_modules/.yarn-state.yml"
+  ```
+
 ## v3.50.0 - 2026-03-13
 
 This is a fork of [Task](https://taskfile.dev) maintained by WALLIX.
