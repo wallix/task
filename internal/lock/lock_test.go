@@ -128,3 +128,52 @@ func TestFlockDifferentNames(t *testing.T) {
 		t.Fatal("different lock names should not block each other")
 	}
 }
+
+func TestFlockTimeout(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	locker, err := lock.NewFlockWithTimeout(dir, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Hold lock indefinitely
+	u1, err := locker.Lock("timeout-test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { require.NoError(t, u1.Unlock()) }()
+
+	// Second lock should time out
+	start := time.Now()
+	_, err = locker.Lock("timeout-test", nil)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timeout")
+	require.Contains(t, err.Error(), "timeout-test")
+	// Should have waited ~500ms, not much longer
+	require.Less(t, elapsed, 2*time.Second)
+}
+
+func TestFlockHolderInfo(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	locker, err := lock.NewFlock(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	u, err := locker.Lock("holder-test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the lock file to verify holder info format
+	data, err := lock.ReadHolderFile(dir, "holder-test")
+	require.NoError(t, err)
+	require.Contains(t, data, "pid=")
+	require.Contains(t, data, "lock=holder-test")
+
+	require.NoError(t, u.Unlock())
+}

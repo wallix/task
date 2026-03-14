@@ -254,6 +254,9 @@ func (e *Executor) setupLocker() error {
 	if err != nil {
 		return err
 	}
+	locker.OnWaiting = func(name, holder string) {
+		e.Logger.Errf(logger.Yellow, "task: still waiting for lock on %q (held by %s)\n", name, holder)
+	}
 	e.Locker = locker
 	return nil
 }
