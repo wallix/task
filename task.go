@@ -378,6 +378,9 @@ func (e *Executor) mkdir(t *ast.Task) error {
 // deps and fingerprint checking. This ensures preparation steps
 // (like enforcing version files) always run.
 func (e *Executor) runSetup(ctx context.Context, t *ast.Task) error {
+	reacquire := e.releaseConcurrencyLimit()
+	defer reacquire()
+
 	for _, d := range t.Setup {
 		if err := e.RunTask(ctx, &Call{Task: d.Task, Vars: d.Vars, Silent: d.Silent, Indirect: true}); err != nil {
 			return err

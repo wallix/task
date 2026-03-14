@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/sebdah/goldie/v2"
@@ -4005,4 +4006,56 @@ tasks:
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
 	assert.Equal(t, 1, len(lines), "nested setup with run:once should have run exactly once, got: %s", string(log))
+}
+
+func TestSetupWithConcurrencyLimit(t *testing.T) {
+	// Regression test: with -C 1, a task that has a setup task would
+	// deadlock because runSetup calls RunTask which tries to acquire
+	// the concurrency slot already held by the parent task.
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  prepare:
+    cmds:
+      - 'true'
+
+  build:
+    setup:
+      - prepare
+    sources:
+      - source.txt
+    generates:
+      - output.txt
+    cmds:
+      - cp source.txt output.txt
+
+  all:
+    deps:
+      - build
+`), 0o644))
+
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithConcurrency(1),
+		task.WithTempDir(task.TempDir{Fingerprint: filepath.Join(dir, ".task")}),
+	)
+	require.NoError(t, e.Setup())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- e.Run(t.Context(), &task.Call{Task: "all"})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("deadlock: setup task blocked on concurrency semaphore with -C 1")
+	}
 }
