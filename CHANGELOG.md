@@ -1,5 +1,78 @@
 # Changelog
 
+## v3.60.0 - 2026-03-14
+
+### Features
+
+- Add `from:` directive for `sources` and `generates`. Wrapper tasks can now
+  inherit entries from their dependencies (`from: deps`) or cmd task-calls
+  (`from: cmds`) without duplicating glob patterns. Entries are deduplicated
+  automatically. Literal globs and `from:` entries can be mixed freely.
+
+  ```yaml
+  tasks:
+    wrapper:
+      sources:
+        - config.yml
+        - from: deps
+      generates:
+        - from: deps
+      cache:
+        url: 'file:///tmp/cache/wrapper-{{.CHECKSUM}}.zip'
+      deps:
+        - build-a
+        - build-b
+  ```
+
+- Improve `--status` output: `genrule:` entries now appear under the
+  `generates:` section instead of being mixed with source data. Source files
+  use the `file:` prefix for clarity.
+
+### Improved
+
+- Redis connections now retry up to 3 times with 2s backoff on transient
+  failures. This covers all operations: cache get/put, lock acquisition,
+  heartbeat, and unlock.
+
+- Distributed lock acquisition retries on connection errors for up to 30s
+  before falling back to local file-based locking, instead of failing
+  immediately. Normal contention (lock held by another process) still
+  waits up to 1 hour as before, configurable via `lock_timeout`.
+
+- Add `lock_timeout` field to `cache:` block. Overrides the maximum wait
+  time for distributed lock contention (default: `1h`). Accepts Go
+  duration strings (e.g. `5m`, `30m`, `2h`).
+
+  ```yaml
+  cache:
+    url: 'redis://…/cache:{{urlsafe .TASK}}-{{.CHECKSUM}}.zip'
+    lock: 'redis://…/lock:{{urlsafe .TASK}}-{{.CHECKSUM}}'
+    lock_timeout: '5m'
+  ```
+
+### Fixes
+
+- Fix deadlock when using setup tasks with `-C 1` (or any concurrency limit).
+  The setup task would try to acquire the concurrency slot already held by the
+  parent, blocking forever. `runSetup` now releases the slot before calling
+  setup tasks, matching the existing `runDeps` behavior.
+
+- Local file locks (`flock`) now time out after 1 hour (matching the Redis
+  lock timeout) instead of waiting indefinitely. Lock files record the holder
+  PID and lock name for diagnostics, and a periodic warning is logged every
+  10 minutes while blocked.
+
+### Changed
+
+- Setup tasks no longer merge their sources into the parent task's fingerprint.
+  Setup tasks run unconditionally before the parent but do not affect its
+  up-to-date detection. Use `from: deps` or `from: cmds` explicitly if you
+  need a parent task's fingerprint to include child sources/generates.
+
+- Cache export (`--export-cache`) no longer recursively walks deps and cmds
+  to collect files. With `from:` directives, each task's generates are
+  self-contained at compile time.
+
 ## v3.53.0 - 2026-03-13
 
 ### Features
