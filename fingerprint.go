@@ -3,6 +3,7 @@ package task
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/wallix/task/v3/internal/fingerprint"
 	"github.com/wallix/task/v3/internal/logger"
@@ -73,16 +74,34 @@ func printStatus(l *logger.Logger, st *fingerprint.TaskStatus) {
 
 	fmt.Fprintf(l.Stdout, "  checksum file: %s\n", st.ChecksumFile)
 
+	// Partition source data into categories for clearer display.
+	// genrule: entries are part of the source hash but logically relate
+	// to generates, so we display them in that section.
+	var srcEntries, genRuleEntries, cmdEntries []string
+	for _, d := range st.SourceData {
+		switch {
+		case strings.HasPrefix(d, "genrule:"):
+			genRuleEntries = append(genRuleEntries, d)
+		case strings.HasPrefix(d, "cmd["):
+			cmdEntries = append(cmdEntries, d)
+		default:
+			srcEntries = append(srcEntries, d)
+		}
+	}
+
 	if st.SourcesUpToDate {
 		fmt.Fprintf(l.Stdout, "  sources: up to date (hash: %s)\n", st.SourcesHash)
 	} else {
 		fmt.Fprintf(l.Stdout, "  sources: changed (stored hash: %s)\n", st.SourcesHash)
 	}
-	for _, f := range st.SourceFiles {
-		fmt.Fprintf(l.Stdout, "    src: %s\n", f)
+	for _, d := range srcEntries {
+		fmt.Fprintf(l.Stdout, "    %s\n", d)
 	}
-	for _, d := range st.SourceData {
-		fmt.Fprintf(l.Stdout, "    data: %s\n", d)
+	for _, f := range st.SourceFiles {
+		fmt.Fprintf(l.Stdout, "    file: %s\n", f)
+	}
+	for _, d := range cmdEntries {
+		fmt.Fprintf(l.Stdout, "    %s\n", d)
 	}
 
 	if st.GeneratesUpToDate {
@@ -90,7 +109,10 @@ func printStatus(l *logger.Logger, st *fingerprint.TaskStatus) {
 	} else {
 		fmt.Fprintf(l.Stdout, "  generates: changed (stored hash: %s)\n", st.GeneratesHash)
 	}
+	for _, d := range genRuleEntries {
+		fmt.Fprintf(l.Stdout, "    %s\n", d)
+	}
 	for _, f := range st.GenerateFiles {
-		fmt.Fprintf(l.Stdout, "    gen: %s\n", f)
+		fmt.Fprintf(l.Stdout, "    file: %s\n", f)
 	}
 }

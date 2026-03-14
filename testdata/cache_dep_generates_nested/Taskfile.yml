@@ -1,0 +1,34 @@
+version: '3'
+
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+
+tasks:
+  # Top-level wrapper: inherits sources and generates from mid via deps.
+  top:
+    sources:
+      - from: deps
+    generates:
+      - from: deps
+    cache:
+      url: 'file://{{.CACHE_DIR}}/top-{{.CHECKSUM}}.zip'
+    deps:
+      - mid
+
+  # Mid-level wrapper: inherits sources and generates from leaf via cmds.
+  mid:
+    sources:
+      - from: cmds
+    generates:
+      - from: cmds
+    cmds:
+      - task: leaf
+
+  leaf:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - cp input.txt output.txt

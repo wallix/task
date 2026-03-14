@@ -1,0 +1,23 @@
+version: '3'
+
+tasks:
+  # Wrapper that combines its own sources with sources from deps.
+  wrapper:
+    sources:
+      - config.txt
+      - from: deps
+    generates:
+      - result.txt
+      - from: deps
+    deps:
+      - leaf
+    cmds:
+      - cat config.txt leaf-out.txt > result.txt
+
+  leaf:
+    sources:
+      - input.txt
+    generates:
+      - leaf-out.txt
+    cmds:
+      - cp input.txt leaf-out.txt

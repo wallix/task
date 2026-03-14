@@ -628,6 +628,11 @@
         "fingerprint": {
           "description": "A single representative file used for checksum-based up-to-date detection instead of hashing every file matched by the glob. Requires 'glob' to be set.",
           "type": "string"
+        },
+        "from": {
+          "description": "Include generates from other tasks. Use \"deps\" to inherit from direct dependencies, or \"cmds\" to inherit from cmd task-calls.",
+          "type": "string",
+          "enum": ["deps", "cmds"]
         }
       },
       "additionalProperties": false

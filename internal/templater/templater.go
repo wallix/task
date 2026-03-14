@@ -111,6 +111,7 @@ func ReplaceGlobs(globs []*ast.Glob, cache *Cache) []*ast.Glob {
 			Glob:        Replace(g.Glob, cache),
 			Negate:      g.Negate,
 			Fingerprint: Replace(g.Fingerprint, cache),
+			From:        g.From,
 		}
 	}
 	return new

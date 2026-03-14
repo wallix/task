@@ -726,6 +726,11 @@ support standard Task variables plus `{{.TASK}}`, `{{.CHECKSUM}}`, and the
 If the remote lock (e.g. Redis) is unavailable, Task logs a warning and falls
 back to a local file lock so the task still runs.
 
+Both `sources` and `generates` entries support a `from:` directive that
+copies entries from related tasks. Supported values are `deps` (direct
+dependencies) and `cmds` (cmd task-calls). This allows wrapper tasks to
+participate in fingerprinting and caching without duplicating glob patterns:
+
 ```yaml
 # Define reusable cache models at the top level
 caches:
@@ -743,6 +748,25 @@ tasks:
       - bin/app
     cmds:
       - go build -o bin/app ./cmd
+
+  # Wrapper task: inherits both sources and generates from its deps.
+  build-all:
+    cache: default
+    sources:
+      - from: deps
+    generates:
+      - from: deps
+    deps:
+      - build
+
+  # Task that delegates via cmds: inherits from cmd task-calls.
+  build-lang:
+    sources:
+      - from: cmds
+    generates:
+      - from: cmds
+    cmds:
+      - task: build
 ```
 
 #### `platforms`

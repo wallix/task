@@ -122,8 +122,10 @@ func (e *Executor) ImportCache(zipPath string, calls ...*Call) error {
 	return e.runSetupForCalls(ctx, calls...)
 }
 
-// collectCacheFiles walks the task dependency tree and collects checksum files
-// and generated files for all up-to-date tasks.
+// collectCacheFiles collects checksum files and generated files for the
+// given tasks. Generated files from dependencies are resolved at compile
+// time via "from: deps" / "from: cmds" directives, so no recursive walk
+// is needed here.
 func (e *Executor) collectCacheFiles(files map[string]string, calls ...*Call) error {
 	for _, call := range calls {
 		t, err := e.CompiledTask(call)
@@ -132,59 +134,28 @@ func (e *Executor) collectCacheFiles(files map[string]string, calls ...*Call) er
 		}
 
 		if len(t.Sources) == 0 && len(t.Generates) == 0 {
-			// No fingerprint — still recurse into deps/setup
-		} else {
-			st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
-			if err != nil {
-				return err
-			}
+			continue
+		}
 
-			if !st.UpToDate {
-				e.Logger.Errf(logger.Yellow, "task: %q not up to date, skipped from export\n", t.Name())
+		st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
+		if err != nil {
+			return err
+		}
+
+		if !st.UpToDate {
+			e.Logger.Errf(logger.Yellow, "task: %q not up to date, skipped from export\n", t.Name())
+			continue
+		}
+
+		if st.ChecksumFile != "" {
+			if existing := files[st.ChecksumFile]; existing != "" {
+				e.Logger.Errf(logger.Yellow, "task: checksum %q used by both %q and %q\n", st.ChecksumFile, existing, t.Name())
 			} else {
-				// Add checksum file
-				if st.ChecksumFile != "" {
-					if existing := files[st.ChecksumFile]; existing != "" {
-						e.Logger.Errf(logger.Yellow, "task: checksum %q used by both %q and %q\n", st.ChecksumFile, existing, t.Name())
-					} else {
-						files[st.ChecksumFile] = t.Name()
-					}
-				}
-				// Add cache files (generates expanded via cache_dir)
-				for _, f := range st.CacheFiles {
-					files[f] = t.Name()
-				}
+				files[st.ChecksumFile] = t.Name()
 			}
 		}
-
-		// Recurse into setup tasks
-		for _, dep := range t.Setup {
-			if dep == nil {
-				continue
-			}
-			if err := e.collectCacheFiles(files, &Call{Task: dep.Task, Vars: dep.Vars, Indirect: true}); err != nil {
-				return err
-			}
-		}
-
-		// Recurse into deps
-		for _, dep := range t.Deps {
-			if dep == nil {
-				continue
-			}
-			if err := e.collectCacheFiles(files, &Call{Task: dep.Task, Vars: dep.Vars, Indirect: true}); err != nil {
-				return err
-			}
-		}
-
-		// Recurse into cmd task calls
-		for _, cmd := range t.Cmds {
-			if cmd == nil || cmd.Task == "" {
-				continue
-			}
-			if err := e.collectCacheFiles(files, &Call{Task: cmd.Task, Vars: cmd.Vars, Indirect: true}); err != nil {
-				return err
-			}
+		for _, f := range st.CacheFiles {
+			files[f] = t.Name()
 		}
 	}
 	return nil

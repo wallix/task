@@ -7,7 +7,7 @@ import (
 )
 
 // Glob represents a file pattern used in sources and generates lists.
-// It supports three YAML forms:
+// It supports four YAML forms:
 //
 //	# scalar: simple glob pattern
 //	- "src/**/*.go"
@@ -21,10 +21,16 @@ import (
 //	#   file matched by the glob.
 //	- glob: "node_modules/**/*"
 //	  fingerprint: "node_modules/.yarn-state.yml"
+//
+//	# from: include generates from another source. Supported values:
+//	#   "deps" — copies generates from all direct dependencies.
+//	#   "cmds" — copies generates from all cmd task-calls.
+//	- from: deps
 type Glob struct {
 	Glob        string
 	Negate      bool
 	Fingerprint string // when set, only this file is hashed for up-to-date checks
+	From        string // when set, references generates from other tasks (e.g. "deps")
 }
 
 func (g *Glob) UnmarshalYAML(node *yaml.Node) error {
@@ -39,9 +45,14 @@ func (g *Glob) UnmarshalYAML(node *yaml.Node) error {
 			Exclude     string `yaml:"exclude"`
 			Glob        string `yaml:"glob"`
 			Fingerprint string `yaml:"fingerprint"`
+			From        string `yaml:"from"`
 		}
 		if err := node.Decode(&glob); err != nil {
 			return errors.NewTaskfileDecodeError(err, node)
+		}
+		if glob.From != "" {
+			g.From = glob.From
+			return nil
 		}
 		if glob.Exclude != "" {
 			g.Glob = glob.Exclude

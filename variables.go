@@ -250,6 +250,24 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		return nil, err
 	}
 
+	// Resolve "from:" entries in sources and generates by expanding them
+	// into the sources/generates of the referenced tasks.
+	if err := e.resolveGlobsFrom(&new, "sources"); err != nil {
+		return nil, err
+	}
+	if err := e.resolveGlobsFrom(&new, "generates"); err != nil {
+		return nil, err
+	}
+
+	// Recompute source hash if sources were extended by from: resolution,
+	// so that the CHECKSUM reflects the full set of inputs.
+	if hasFromEntries(origTask.Sources) && len(new.Sources) > 0 {
+		checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, &new)
+		new.SourceHash = checker.SourceValue()
+		vars.Set("CHECKSUM", ast.Var{Live: new.SourceHash})
+		cache.ResetCache()
+	}
+
 	if len(origTask.Preconditions) > 0 {
 		new.Preconditions = make([]*ast.Precondition, 0, len(origTask.Preconditions))
 		for _, precondition := range origTask.Preconditions {
@@ -310,6 +328,107 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 	}
 
 	return &new, nil
+}
+
+// hasFromEntries reports whether any Glob in the slice has a From directive.
+func hasFromEntries(globs []*ast.Glob) bool {
+	for _, g := range globs {
+		if g.From != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveGlobsFrom expands "from:" entries in a task's sources or generates
+// list (selected by field). Supported from: values:
+//   - "deps": replaced by the same field of every direct dependency
+//   - "cmds": replaced by the same field of every cmd task-call
+//
+// This allows wrapper tasks to inherit their children's sources/generates
+// without duplicating glob patterns. Chaining works: if a child also uses
+// "from:", its globs are resolved first via CompiledTask.
+func (e *Executor) resolveGlobsFrom(t *ast.Task, field string) error {
+	var globs *[]*ast.Glob
+	switch field {
+	case "sources":
+		globs = &t.Sources
+	case "generates":
+		globs = &t.Generates
+	default:
+		return fmt.Errorf("task: %s: resolveGlobsFrom: unknown field %q", t.Task, field)
+	}
+
+	if !hasFromEntries(*globs) {
+		return nil
+	}
+
+	getField := func(ct *ast.Task) []*ast.Glob {
+		if field == "sources" {
+			return ct.Sources
+		}
+		return ct.Generates
+	}
+
+	resolved := make([]*ast.Glob, 0, len(*globs))
+	seen := make(map[string]bool)
+	add := func(g *ast.Glob) {
+		key := g.Glob
+		if g.Negate {
+			key = "!" + key
+		}
+		if g.Fingerprint != "" {
+			key += "\x00fp:" + g.Fingerprint
+		}
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		resolved = append(resolved, g)
+	}
+	addFromTask := func(taskName string, vars *ast.Vars, fromKind string) error {
+		ct, err := e.CompiledTask(&Call{Task: taskName, Vars: vars, Indirect: true})
+		if err != nil {
+			return fmt.Errorf("task: %s: %s: from: %s: resolving %q: %w", t.Task, field, fromKind, taskName, err)
+		}
+		for _, g := range getField(ct) {
+			if g.From != "" {
+				continue
+			}
+			add(g)
+		}
+		return nil
+	}
+	for _, g := range *globs {
+		if g.From == "" {
+			add(g)
+			continue
+		}
+		switch g.From {
+		case "deps":
+			for _, dep := range t.Deps {
+				if dep == nil {
+					continue
+				}
+				if err := addFromTask(dep.Task, dep.Vars, "deps"); err != nil {
+					return err
+				}
+			}
+		case "cmds":
+			for _, cmd := range t.Cmds {
+				if cmd == nil || cmd.Task == "" {
+					continue
+				}
+				if err := addFromTask(cmd.Task, cmd.Vars, "cmds"); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("task: %s: %s: unsupported from: %q (expected \"deps\" or \"cmds\")", t.Task, field, g.From)
+		}
+	}
+	*globs = resolved
+	return nil
 }
 
 func asAnySlice[T any](slice []T) []any {

@@ -77,3 +77,45 @@ func TestGlob_UnmarshalYAML_InGeneratesList(t *testing.T) {
 	assert.False(t, globs[2].Negate)
 	assert.Equal(t, "node_modules/.yarn-state.yml", globs[2].Fingerprint)
 }
+
+func TestGlob_UnmarshalYAML_FromDeps(t *testing.T) {
+	t.Parallel()
+	input := `from: deps`
+	var g ast.Glob
+	require.NoError(t, yaml.Unmarshal([]byte(input), &g))
+	assert.Empty(t, g.Glob)
+	assert.False(t, g.Negate)
+	assert.Empty(t, g.Fingerprint)
+	assert.Equal(t, "deps", g.From)
+}
+
+func TestGlob_UnmarshalYAML_FromCmds(t *testing.T) {
+	t.Parallel()
+	input := `from: cmds`
+	var g ast.Glob
+	require.NoError(t, yaml.Unmarshal([]byte(input), &g))
+	assert.Empty(t, g.Glob)
+	assert.Equal(t, "cmds", g.From)
+}
+
+func TestGlob_UnmarshalYAML_ListWithFrom(t *testing.T) {
+	t.Parallel()
+	input := `
+- "src/**/*.go"
+- from: deps
+- exclude: "vendor/**"
+`
+	var globs []*ast.Glob
+	require.NoError(t, yaml.Unmarshal([]byte(input), &globs))
+	require.Len(t, globs, 3)
+
+	assert.Equal(t, "src/**/*.go", globs[0].Glob)
+	assert.Empty(t, globs[0].From)
+
+	assert.Empty(t, globs[1].Glob)
+	assert.Equal(t, "deps", globs[1].From)
+
+	assert.Equal(t, "vendor/**", globs[2].Glob)
+	assert.True(t, globs[2].Negate)
+	assert.Empty(t, globs[2].From)
+}

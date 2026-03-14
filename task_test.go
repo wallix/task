@@ -509,8 +509,8 @@ tasks:
 	assert.Contains(t, out, "is not up to date")
 	assert.Contains(t, out, "sources: changed")
 	assert.Contains(t, out, "generates: changed")
-	assert.Contains(t, out, "src:")
-	assert.Contains(t, out, "data:")
+	assert.Contains(t, out, "srcrule:")
+	assert.Contains(t, out, "file:")
 
 	// Run the task
 	buff.Reset()
@@ -3591,6 +3591,316 @@ tasks:
 	err := e.Run(t.Context(), &task.Call{Task: "build"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "outside project root")
+}
+
+func TestCacheDepGenerates(t *testing.T) {
+	// A wrapper task with cache enabled but no generates of its own should
+	// collect generates from its deps and include them in the cache archive.
+	dir := copyTestdata(t, "cache_dep_generates")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+
+	// Run once — should populate the cache with dep generates
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.FileExists(t, filepath.Join(dir, "output-a.txt"))
+	assert.FileExists(t, filepath.Join(dir, "output-b.txt"))
+
+	// Verify cache was saved
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache dir should have one zip from the wrapper task")
+
+	// Delete generates and checksum — task is now out-of-date
+	require.NoError(t, os.Remove(filepath.Join(dir, "output-a.txt")))
+	require.NoError(t, os.Remove(filepath.Join(dir, "output-b.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	// Run again — should restore from cache
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "wrapper"}))
+
+	// Both dep generates should be restored from cache
+	assert.FileExists(t, filepath.Join(dir, "output-a.txt"))
+	assert.FileExists(t, filepath.Join(dir, "output-b.txt"))
+	contentA, err := os.ReadFile(filepath.Join(dir, "output-a.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello\n", string(contentA))
+	contentB, err := os.ReadFile(filepath.Join(dir, "output-b.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello\n", string(contentB))
+	assert.Contains(t, buff.String(), "restored from cache")
+}
+
+func TestCacheDepGeneratesNested(t *testing.T) {
+	// A wrapper task whose deps themselves have no generates but delegate
+	// to further sub-tasks via cmds should still collect the leaf generates.
+	dir := copyTestdata(t, "cache_dep_generates_nested")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+
+	// Run once — populates cache
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "top"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+
+	// Verify cache was saved
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache dir should have one zip")
+
+	// Delete generates and checksum
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	// Run again — should restore from cache
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "top"}))
+
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	content, err := os.ReadFile(filepath.Join(dir, "output.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello\n", string(content))
+	assert.Contains(t, buff.String(), "restored from cache")
+}
+
+func TestFromSourcesDeps(t *testing.T) {
+	t.Parallel()
+	// "from: deps" in sources should collect sources from direct deps.
+	// When two deps share the same source, it should be deduplicated.
+	dir := copyTestdata(t, "from_sources_deps")
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Run once — should execute
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.FileExists(t, filepath.Join(dir, "output-a.txt"))
+	assert.FileExists(t, filepath.Join(dir, "output-b.txt"))
+
+	// Second run — should be up to date
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.Contains(t, buff.String(), "up to date")
+
+	// Modify the shared source — wrapper should re-execute
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("changed\n"), 0o644))
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.NotContains(t, buff.String(), `Task "wrapper" is up to date`)
+
+	// Verify status output has deduplicated sources
+	buff.Reset()
+	require.NoError(t, e.Status(&task.Call{Task: "wrapper"}))
+	out := buff.String()
+	// input.txt should appear exactly once as a srcrule
+	assert.Equal(t, 1, strings.Count(out, "srcrule:input.txt"), "input.txt should be deduplicated in sources, got:\n%s", out)
+}
+
+func TestFromMixed(t *testing.T) {
+	t.Parallel()
+	// A task with both literal globs and "from: deps" in sources/generates.
+	dir := copyTestdata(t, "from_mixed")
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Run — should execute both leaf and wrapper
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.FileExists(t, filepath.Join(dir, "leaf-out.txt"))
+	assert.FileExists(t, filepath.Join(dir, "result.txt"))
+
+	// Second run — up to date
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.Contains(t, buff.String(), "up to date")
+
+	// Verify status shows both own and inherited sources/generates
+	buff.Reset()
+	require.NoError(t, e.Status(&task.Call{Task: "wrapper"}))
+	out := buff.String()
+	assert.Contains(t, out, "srcrule:config.txt")
+	assert.Contains(t, out, "srcrule:input.txt")
+	assert.Contains(t, out, "genrule:result.txt")
+	assert.Contains(t, out, "genrule:leaf-out.txt")
+
+	// Change inherited source — wrapper should re-run
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("new\n"), 0o644))
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.NotContains(t, buff.String(), "up to date")
+}
+
+func TestFromSourcesCmds(t *testing.T) {
+	// "from: cmds" in sources/generates should collect from cmd task-calls.
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("data\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  wrapper:
+    sources:
+      - from: cmds
+    generates:
+      - from: cmds
+    cmds:
+      - task: worker
+
+  worker:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - cp input.txt output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// Run
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+
+	// Second run — up to date
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.Contains(t, buff.String(), "up to date")
+
+	// Modify source — should re-run
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("changed\n"), 0o644))
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.NotContains(t, buff.String(), "up to date")
+}
+
+func TestFromInvalidValue(t *testing.T) {
+	// An unsupported from: value should produce an error.
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  bad:
+    sources:
+      - from: invalid
+    cmds:
+      - echo hello
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	err := e.Run(t.Context(), &task.Call{Task: "bad"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported from:")
+}
+
+func TestStatusOutputGrouping(t *testing.T) {
+	// Verify that --status output groups genrule: entries under generates,
+	// not under sources.
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  build:
+    cmds:
+      - cp source.txt generated.txt
+    sources:
+      - source.txt
+    generates:
+      - generated.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	require.NoError(t, e.Status(&task.Call{Task: "build"}))
+	out := buff.String()
+
+	// genrule: should appear after "generates:", not after "sources:"
+	srcIdx := strings.Index(out, "sources:")
+	genIdx := strings.Index(out, "generates:")
+	genRuleIdx := strings.Index(out, "genrule:")
+	require.Greater(t, srcIdx, -1, "sources: not found in output:\n%s", out)
+	require.Greater(t, genIdx, -1, "generates: not found in output:\n%s", out)
+	require.Greater(t, genRuleIdx, -1, "genrule: not found in output:\n%s", out)
+	assert.Greater(t, genRuleIdx, genIdx, "genrule: should appear after generates: header, got:\n%s", out)
+
+	// srcrule: should appear before generates:
+	srcRuleIdx := strings.Index(out, "srcrule:")
+	require.Greater(t, srcRuleIdx, -1, "srcrule: not found in output:\n%s", out)
+	assert.Less(t, srcRuleIdx, genIdx, "srcrule: should appear before generates: header, got:\n%s", out)
 }
 
 func TestSetupSourcesMergeIntoFingerprint(t *testing.T) {

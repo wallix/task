@@ -1,0 +1,32 @@
+version: '3'
+
+tasks:
+  # Wrapper that inherits sources and generates from deps.
+  # leaf-a and leaf-b share the same source (input.txt) — dedup expected.
+  wrapper:
+    sources:
+      - from: deps
+    generates:
+      - from: deps
+    deps:
+      - leaf-a
+      - leaf-b
+    cmds:
+      - task: leaf-a
+      - task: leaf-b
+
+  leaf-a:
+    sources:
+      - input.txt
+    generates:
+      - output-a.txt
+    cmds:
+      - cp input.txt output-a.txt
+
+  leaf-b:
+    sources:
+      - input.txt
+    generates:
+      - output-b.txt
+    cmds:
+      - cp input.txt output-b.txt
