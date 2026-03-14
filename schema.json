@@ -62,6 +62,10 @@
           "description": "A list of dependencies of this task. Tasks defined here will run in parallel before this task.",
           "$ref": "#/definitions/deps"
         },
+        "setup": {
+          "description": "A list of setup tasks that run sequentially and unconditionally before this task.",
+          "$ref": "#/definitions/deps"
+        },
         "label": {
           "description": "Overrides the name of the task in the output when a task is run. Supports variables.",
           "type": "string"

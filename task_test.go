@@ -742,12 +742,12 @@ tasks:
 	assert.Equal(t, 2, len(lines), "setup should have run twice (once per invocation), got: %s", string(log))
 }
 
-func TestSetupFingerprintMerge(t *testing.T) {
+func TestSetupDoesNotAffectFingerprint(t *testing.T) {
 	t.Parallel()
 
-	// When a setup task has sources/generates, those should be merged
-	// into the parent task's fingerprint. If the setup task's source
-	// changes, the parent should rebuild even if its own sources are unchanged.
+	// Setup task sources/generates are NOT merged into the parent's
+	// fingerprint. Changing a setup task's source should not cause
+	// the parent to rebuild.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v1"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
@@ -793,76 +793,14 @@ tasks:
 	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
 	assert.Contains(t, buff.String(), "up to date")
 
-	// Now change version.txt (setup task's source) — parent's own source.txt is unchanged
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v2"), 0o644))
-
-	// Third run: setup rebuilds resolved-version.txt, and because the setup
-	// task's sources/generates are merged into the parent's fingerprint,
-	// the parent should also rebuild
-	buff.Reset()
-	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
-	assert.NotContains(t, buff.String(), "up to date",
-		"parent task should rebuild when setup task's sources change")
-	output, err = os.ReadFile(filepath.Join(dir, "output.txt"))
-	require.NoError(t, err)
-	assert.Contains(t, string(output), "v2")
-}
-
-func TestSetupFingerprintFalse(t *testing.T) {
-	t.Parallel()
-
-	// When a setup dep has fingerprint: false, its sources/generates
-	// should NOT be merged into the parent's fingerprint.
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v1"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "source.txt"), []byte("hello"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
-tasks:
-  enforce-version:
-    sources:
-      - version.txt
-    generates:
-      - resolved-version.txt
-    cmds:
-      - cp version.txt resolved-version.txt
-
-  build:
-    setup:
-      - task: enforce-version
-        fingerprint: false
-    sources:
-      - source.txt
-    cmds:
-      - cat source.txt resolved-version.txt > output.txt
-    generates:
-      - output.txt
-`), 0o644))
-
-	tempDir := filepath.Join(dir, ".task")
-	var buff bytes.Buffer
-	e := task.NewExecutor(
-		task.WithDir(dir),
-		task.WithStdout(&buff),
-		task.WithStderr(&buff),
-		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
-	)
-	require.NoError(t, e.Setup())
-
-	// First run
-	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
-
-	// Second run: up-to-date
-	buff.Reset()
-	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
-	assert.Contains(t, buff.String(), "up to date")
-
-	// Change version.txt — with fingerprint: false, parent should stay up-to-date
+	// Change version.txt (setup task's source) — parent's own source.txt is unchanged.
+	// Parent should remain up-to-date since setup sources are not merged.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "version.txt"), []byte("v2"), 0o644))
 
 	buff.Reset()
 	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
-	assert.Contains(t, buff.String(), "up to date",
-		"parent should stay up-to-date when setup has fingerprint: false")
+	assert.Contains(t, buff.String(), `Task "build" is up to date`,
+		"parent should stay up-to-date when only setup source changes")
 }
 
 func TestExportImportCache(t *testing.T) {
@@ -3903,10 +3841,10 @@ tasks:
 	assert.Less(t, srcRuleIdx, genIdx, "srcrule: should appear before generates: header, got:\n%s", out)
 }
 
-func TestSetupSourcesMergeIntoFingerprint(t *testing.T) {
-	// When a task has setup tasks with sources, those sources are merged
-	// into the parent task's Sources at runtime. Changing a setup task's
-	// source file should cause the parent to be considered not-up-to-date.
+func TestSetupSourcesNotMergedIntoFingerprint(t *testing.T) {
+	// Setup task sources should NOT be merged into the parent's fingerprint.
+	// Changing a setup task's source file should not cause the parent to
+	// re-execute if the parent's own sources are unchanged.
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -3953,70 +3891,118 @@ tasks:
 	// Change the setup task's source file
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "setup-src.txt"), []byte("v2"), 0o644))
 
-	// Third run: task should re-execute because setup source changed
+	// Third run: parent should still be up-to-date because its own sources
+	// are unchanged — setup sources are not part of the parent's fingerprint.
 	buff.Reset()
 	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
-	assert.NotContains(t, buff.String(), "up to date",
-		"task should re-run when setup task source file changes")
+	assert.Contains(t, buff.String(), `Task "build" is up to date`,
+		"parent should remain up-to-date when only setup source changes")
 }
 
-func TestSetupCmdChangesChecksum(t *testing.T) {
-	// Changing a setup task's command should invalidate the parent's
-	// fingerprint, even if source files are unchanged.
+func TestSetupRunOnce(t *testing.T) {
+	// A setup task with "run: once" should only execute once even when
+	// multiple tasks reference it as a setup dependency.
 	t.Parallel()
 
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main-src.txt"), []byte("main"), 0o644))
-
-	taskfile := func(setupCmd string) []byte {
-		return []byte(fmt.Sprintf(`version: '3'
+	logFile := filepath.Join(dir, "setup.log")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(fmt.Sprintf(`version: '3'
 tasks:
   prepare:
+    run: once
     cmds:
-      - '%s'
+      - echo ran >> %s
 
-  build:
+  build-a:
     setup:
       - prepare
-    sources:
-      - main-src.txt
-    generates:
-      - output.txt
     cmds:
-      - cp main-src.txt output.txt
-`, setupCmd))
-	}
+      - 'true'
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), taskfile("echo v1"), 0o644))
+  build-b:
+    setup:
+      - prepare
+    cmds:
+      - 'true'
 
-	tempDir := filepath.Join(dir, ".task")
+  all:
+    deps:
+      - build-a
+      - build-b
+`, logFile)), 0o644))
 
-	run := func() string {
-		var buff bytes.Buffer
-		e := task.NewExecutor(
-			task.WithDir(dir),
-			task.WithStdout(&buff),
-			task.WithStderr(&buff),
-			task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
-		)
-		require.NoError(t, e.Setup())
-		require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
-		return buff.String()
-	}
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: filepath.Join(dir, ".task")}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "all"}))
 
-	// First run: task executes
-	run()
-	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	log, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+	assert.Equal(t, 1, len(lines), "setup with run:once should have run exactly once, got: %s", string(log))
+}
 
-	// Second run: up-to-date
-	out := run()
-	assert.Contains(t, out, "up to date")
+func TestSetupRunOnceNested(t *testing.T) {
+	// A setup task with "run: once" should only execute once even when
+	// referenced from nested task calls at different depths.
+	t.Parallel()
 
-	// Change setup task's command
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), taskfile("echo v2"), 0o644))
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "setup.log")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(fmt.Sprintf(`version: '3'
+tasks:
+  prepare:
+    run: once
+    cmds:
+      - echo ran >> %s
 
-	// Third run: should re-execute because setup command changed
-	out = run()
-	assert.NotContains(t, out, "up to date",
-		"task should re-run when setup task command changes")
+  inner-a:
+    setup:
+      - prepare
+    cmds:
+      - 'true'
+
+  inner-b:
+    setup:
+      - prepare
+    cmds:
+      - 'true'
+
+  outer-a:
+    setup:
+      - prepare
+    cmds:
+      - task: inner-a
+
+  outer-b:
+    deps:
+      - inner-b
+    cmds:
+      - 'true'
+
+  all:
+    deps:
+      - outer-a
+      - outer-b
+`, logFile)), 0o644))
+
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: filepath.Join(dir, ".task")}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "all"}))
+
+	log, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+	assert.Equal(t, 1, len(lines), "nested setup with run:once should have run exactly once, got: %s", string(log))
 }

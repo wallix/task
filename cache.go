@@ -26,9 +26,6 @@ func (e *Executor) runSetupForCalls(ctx context.Context, calls ...*Call) error {
 		if err := e.runSetup(ctx, t); err != nil {
 			return err
 		}
-		if err := e.mergeSetupFingerprints(t); err != nil {
-			return err
-		}
 	}
 	return nil
 }
