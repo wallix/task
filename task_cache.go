@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wallix/task/v3/internal/fingerprint"
 	"github.com/wallix/task/v3/internal/lock"
@@ -260,9 +261,17 @@ func (e *Executor) evalCacheLocker(t *ast.Task) lock.Locker {
 		return nil
 	}
 
+	var timeout time.Duration
+	if t.Cache.LockTimeout != "" {
+		timeout, err = time.ParseDuration(t.Cache.LockTimeout)
+		if err != nil {
+			e.Logger.VerboseErrf(logger.Yellow, "task: cache lock_timeout %q: %v\n", t.Cache.LockTimeout, err)
+		}
+	}
+
 	switch u.Scheme {
 	case "redis":
-		return redis.NewLocker(u)
+		return redis.NewLockerWithTimeout(u, timeout)
 	default:
 		e.Logger.VerboseErrf(logger.Yellow, "task: unsupported lock scheme %q\n", u.Scheme)
 		return nil

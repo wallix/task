@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	lockTTL        = 30   // seconds; kept alive by heartbeat
-	heartbeatFreq  = 10   // seconds between renewals
-	retryInterval  = 5    // seconds between acquire retries
-	acquireMax     = 3600 // 1 hour max wait for contention
-	connectGiveUp  = 30   // seconds; give up on connection errors (triggers local fallback)
+	lockTTL       = 30   // seconds; kept alive by heartbeat
+	heartbeatFreq = 10   // seconds between renewals
+	retryInterval = 5    // seconds between acquire retries
+	acquireMax    = 3600 // 1 hour max wait for contention
+	connectGiveUp = 30   // seconds; give up on connection errors (triggers local fallback)
 )
 
 // Lua: release only if we own the lock.
@@ -27,15 +27,20 @@ const renewLua = `if redis.call("get",KEYS[1])==ARGV[1] then return redis.call("
 // Locker implements lock.Locker using Redis SET NX EX with a heartbeat.
 // Each Lock call parses the given name as a Redis URL (redis://host/key).
 type Locker struct {
-	// BaseURL is evaluated per-lock if set. For the current implementation
-	// each call to Lock receives the full URL as name.
-	url *url.URL
+	url        *url.URL
+	acquireMax time.Duration // max wait for contention; 0 = use default (1h)
 }
 
 // NewLocker creates a Redis-backed locker from a parsed URL.
 // The URL path prefix is combined with the lock name to form the Redis key.
 func NewLocker(u *url.URL) *Locker {
 	return &Locker{url: u}
+}
+
+// NewLockerWithTimeout creates a Redis-backed locker with a custom
+// contention timeout. If timeout is 0, the default (1h) is used.
+func NewLockerWithTimeout(u *url.URL, timeout time.Duration) *Locker {
+	return &Locker{url: u, acquireMax: timeout}
 }
 
 // Lock acquires a distributed lock. The name is appended to the base URL
@@ -55,7 +60,11 @@ func (l *Locker) Lock(name string, onContention func()) (lock.Unlocker, error) {
 
 	owner := fmt.Sprintf("%d:%d", os.Getpid(), time.Now().UnixNano())
 	ttl := strconv.Itoa(lockTTL)
-	contentionDeadline := time.Now().Add(acquireMax * time.Second)
+	maxWait := l.acquireMax
+	if maxWait == 0 {
+		maxWait = acquireMax * time.Second
+	}
+	contentionDeadline := time.Now().Add(maxWait)
 	connectDeadline := time.Now().Add(connectGiveUp * time.Second)
 	notified := false
 

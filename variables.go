@@ -299,6 +299,9 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 				if resolved.Enabled != nil {
 					merged.Enabled = resolved.Enabled
 				}
+				if resolved.LockTimeout != "" {
+					merged.LockTimeout = resolved.LockTimeout
+				}
 				resolved = merged
 			}
 		}
@@ -306,6 +309,7 @@ func (e *Executor) compiledTask(call *Call, evaluateShVars bool) (*ast.Task, err
 		resolved.URL = templater.Replace(resolved.URL, cache)
 		resolved.Lock = templater.Replace(resolved.Lock, cache)
 		resolved.If = templater.Replace(resolved.If, cache)
+		resolved.LockTimeout = templater.Replace(resolved.LockTimeout, cache)
 		new.Cache = resolved
 	}
 

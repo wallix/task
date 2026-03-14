@@ -28,12 +28,13 @@ import (
 //	  inherit: doc                    # inherit from "doc" model with overrides
 //	  url: 'override...'
 type Cache struct {
-	Inherit string // model name to inherit from (empty = no inheritance)
-	Enabled *bool  // explicit bool (nil = always enabled when block present)
-	If      string // template condition for dynamic enable check
-	URL     string // template string → cache URL
-	Lock    string // template string → lock URL
-	TTL     string // cached asset TTL (e.g. "48h", "7d"); default 48h
+	Inherit     string // model name to inherit from (empty = no inheritance)
+	Enabled     *bool  // explicit bool (nil = always enabled when block present)
+	If          string // template condition for dynamic enable check
+	URL         string // template string → cache URL
+	Lock        string // template string → lock URL
+	TTL         string // cached asset TTL (e.g. "48h", "7d"); default 48h
+	LockTimeout string // max wait for lock contention (e.g. "5m", "1h"); default 1h
 }
 
 func (c *Cache) DeepCopy() *Cache {
@@ -81,6 +82,8 @@ func (c *Cache) UnmarshalYAML(node *yaml.Node) error {
 				c.Lock = val.Value
 			case "ttl":
 				c.TTL = val.Value
+			case "lock_timeout":
+				c.LockTimeout = val.Value
 			}
 		}
 		return nil

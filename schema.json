@@ -234,6 +234,10 @@
                 "ttl": {
                   "description": "Cache asset TTL duration (e.g. \"48h\", \"7d\"). Default: 48h.",
                   "type": "string"
+                },
+                "lock_timeout": {
+                  "description": "Maximum time to wait for lock contention (e.g. \"5m\", \"1h\"). Default: 1h.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -857,6 +861,10 @@
                 },
                 "ttl": {
                   "description": "Cache asset TTL duration (e.g. \"48h\", \"7d\"). Default: 48h.",
+                  "type": "string"
+                },
+                "lock_timeout": {
+                  "description": "Maximum time to wait for lock contention (e.g. \"5m\", \"1h\"). Default: 1h.",
                   "type": "string"
                 }
               },
