@@ -14,7 +14,11 @@ import (
 	"time"
 )
 
-const connectTimeout = 10 * time.Second
+const (
+	connectTimeout = 10 * time.Second
+	dialRetries    = 3
+	dialRetryDelay = 2 * time.Second
+)
 
 // Conn is a low-level Redis connection.
 type Conn struct {
@@ -38,21 +42,30 @@ func Dial(u *url.URL) (*Conn, error) {
 }
 
 // DialAddr connects to host:port with optional password.
+// Retries transient connection failures up to dialRetries times.
 func DialAddr(addr, password string) (*Conn, error) {
 	dialer := net.Dialer{Timeout: connectTimeout}
-	nc, err := dialer.Dial("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("redis: connect %s: %w", addr, err)
-	}
-	c := &Conn{conn: nc, r: bufio.NewReader(nc)}
-
-	if password != "" {
-		if err := c.Do("AUTH", password); err != nil {
-			nc.Close()
-			return nil, fmt.Errorf("redis: AUTH: %w", err)
+	var lastErr error
+	for attempt := range dialRetries {
+		nc, err := dialer.Dial("tcp", addr)
+		if err != nil {
+			lastErr = err
+			if attempt < dialRetries-1 {
+				time.Sleep(dialRetryDelay)
+			}
+			continue
 		}
+		c := &Conn{conn: nc, r: bufio.NewReader(nc)}
+
+		if password != "" {
+			if err := c.Do("AUTH", password); err != nil {
+				nc.Close()
+				return nil, fmt.Errorf("redis: AUTH: %w", err)
+			}
+		}
+		return c, nil
 	}
-	return c, nil
+	return nil, fmt.Errorf("redis: connect %s after %d attempts: %w", addr, dialRetries, lastErr)
 }
 
 // Close closes the connection.

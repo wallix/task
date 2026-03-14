@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	lockTTL       = 30   // seconds; kept alive by heartbeat
-	heartbeatFreq = 10   // seconds between renewals
-	retryInterval = 5    // seconds between acquire retries
-	acquireMax    = 3600 // 1 hour max wait
+	lockTTL        = 30   // seconds; kept alive by heartbeat
+	heartbeatFreq  = 10   // seconds between renewals
+	retryInterval  = 5    // seconds between acquire retries
+	acquireMax     = 3600 // 1 hour max wait for contention
+	connectGiveUp  = 30   // seconds; give up on connection errors (triggers local fallback)
 )
 
 // Lua: release only if we own the lock.
@@ -54,14 +55,24 @@ func (l *Locker) Lock(name string, onContention func()) (lock.Unlocker, error) {
 
 	owner := fmt.Sprintf("%d:%d", os.Getpid(), time.Now().UnixNano())
 	ttl := strconv.Itoa(lockTTL)
-	deadline := time.Now().Add(acquireMax * time.Second)
+	contentionDeadline := time.Now().Add(acquireMax * time.Second)
+	connectDeadline := time.Now().Add(connectGiveUp * time.Second)
 	notified := false
 
 	for {
 		c, err := Dial(l.url)
 		if err != nil {
-			return nil, err
+			// Connection error — give up quickly so the caller can
+			// fall back to local locking.
+			if time.Now().After(connectDeadline) {
+				return nil, fmt.Errorf("redis lock: connect failed for %q: %w", key, err)
+			}
+			time.Sleep(retryInterval * time.Second)
+			continue
 		}
+		// Connected — reset the connect deadline on every successful dial
+		// so only consecutive failures count toward the 30s budget.
+		connectDeadline = time.Now().Add(connectGiveUp * time.Second)
 
 		if err := c.Send("SET", key, owner, "NX", "EX", ttl); err != nil {
 			c.Close()
@@ -79,11 +90,12 @@ func (l *Locker) Lock(name string, onContention func()) (lock.Unlocker, error) {
 			return rl, nil
 		}
 
+		// Lock held by another process — normal contention.
 		if !notified && onContention != nil {
 			onContention()
 			notified = true
 		}
-		if time.Now().After(deadline) {
+		if time.Now().After(contentionDeadline) {
 			return nil, fmt.Errorf("redis lock: timeout acquiring %q", key)
 		}
 		time.Sleep(retryInterval * time.Second)
