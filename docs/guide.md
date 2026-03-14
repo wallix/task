@@ -809,43 +809,6 @@ tasks:
       - public/bundle.css
 ```
 
-If you prefer these check to be made by the modification timestamp of the files,
-instead of its checksum (content), just set the `method` property to
-`timestamp`. This can be done at two levels:
-
-At the task level for a specific task:
-
-```yaml
-version: '3'
-
-tasks:
-  build:
-    cmds:
-      - go build .
-    sources:
-      - ./*.go
-    generates:
-      - app{{exeExt}}
-    method: timestamp
-```
-
-At the root level of the Taskfile to apply it globally to all tasks:
-
-```yaml
-version: '3'
-
-method: timestamp # Will be the default for all tasks
-
-tasks:
-  build:
-    cmds:
-      - go build .
-    sources:
-      - ./*.go
-    generates:
-      - app{{exeExt}}
-```
-
 In situations where you need more flexibility the `status` keyword can be used.
 You can even combine the two. See the documentation for
 [status](#using-programmatic-checks-to-indicate-a-task-is-up-to-date) for an
@@ -884,20 +847,6 @@ change even if the source has not.
 
 :::
 
-::: tip
-
-The method `none` skips any validation and always runs the task.
-
-:::
-
-::: info
-
-For the `checksum` (default) or `timestamp` method to work, it is only necessary
-to inform the source files. When the `timestamp` method is used, the last time
-of the running the task is considered as a generate.
-
-:::
-
 ### Using programmatic checks to indicate a task is up to date
 
 Alternatively, you can inform a sequence of tests as `status`. If no error is
@@ -921,20 +870,12 @@ tasks:
 
 Normally, you would use `sources` in combination with `generates` - but for
 tasks that generate remote artifacts (Docker images, deploys, CD releases) the
-checksum source and timestamps require either access to the artifact or for an
-out-of-band refresh of the `.checksum` fingerprint file.
+checksum requires either access to the artifact or for an out-of-band refresh
+of the `.checksum` fingerprint file.
 
-Two special variables <span v-pre>`{{.CHECKSUM}}`</span> and
-<span v-pre>`{{.TIMESTAMP}}`</span> are available for interpolation within
-`cmds` and `status` commands, depending on the method assigned to fingerprint
-the sources. Only `source` globs are fingerprinted.
-
-Note that the <span v-pre>`{{.TIMESTAMP}}`</span> variable is a "live" Go
-`time.Time` struct, and can be formatted using any of the methods that
-`time.Time` responds to.
-
-See [the Go Time documentation](https://golang.org/pkg/time/) for more
-information.
+The special variable <span v-pre>`{{.CHECKSUM}}`</span> is available for
+interpolation within `cmds` and `status` commands. Only `source` globs are
+fingerprinted.
 
 You can use `--force` or `-f` if you want to force a task to run even when
 up-to-date.

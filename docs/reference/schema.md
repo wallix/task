@@ -44,17 +44,6 @@ output:
     error_only: false
 ```
 
-### `method`
-
-- **Type**: `string`
-- **Default**: `checksum`
-- **Options**: `checksum`, `timestamp`, `none`
-- **Description**: Default method for checking if tasks are up-to-date
-
-```yaml
-method: timestamp
-```
-
 ### [`includes`](#include)
 
 - **Type**: `map[string]Include`
@@ -561,21 +550,6 @@ tasks:
     aliases: [compile, make]
     cmds:
       - go build ./...
-```
-
-#### `method`
-
-- **Type**: `string`
-- **Default**: `checksum`
-- **Options**: `checksum`, `timestamp`, `none`
-- **Description**: Method for checking if the task is up-to-date. Refer to the `method` root property for details.
-
-```yaml
-tasks:
-  build:
-    sources:
-      - go.mod
-    method: timestamp
 ```
 
 #### `sources`

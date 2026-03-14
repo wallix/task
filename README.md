@@ -16,11 +16,12 @@ Source: [github.com/wallix/task](https://github.com/wallix/task)
 
 #### Setup tasks
 
-A new `setup` field runs tasks **unconditionally and sequentially** before deps and fingerprint checks. Setup tasks' sources and commands are merged into the parent task's fingerprint.
+A new `setup` field runs tasks **unconditionally and sequentially** before deps and fingerprint checks. Unlike deps, setup tasks always run regardless of whether the parent is up-to-date, and they do **not** affect the parent's fingerprint. Use `run: once` to avoid re-executing shared setup tasks.
 
 ```yaml
 tasks:
   enforce-version:
+    run: once
     cmds:
       - date +%Y-%m-%d > version.txt
 
@@ -40,7 +41,7 @@ tasks:
 
 For large generated directories where hashing every file is expensive, a `generates` entry can specify a **fingerprint** file -- a single representative file used for checksum-based up-to-date detection instead of hashing every file matched by the glob. The full glob is still used for cache operations (save/restore), so all files are archived correctly.
 
-Three YAML forms are supported in `generates`:
+Four YAML forms are supported in `sources` and `generates`:
 
 ```yaml
 generates:
@@ -54,6 +55,9 @@ generates:
   # while fingerprint names a single file for up-to-date checks.
   - glob: "node_modules/**/*"
     fingerprint: "node_modules/.yarn-state.yml"
+
+  # From: inherit entries from related tasks (see "Inherited sources/generates")
+  - from: deps
 ```
 
 **Example: yarn install with fingerprint**
@@ -90,6 +94,68 @@ tasks:
       url: 'file:///tmp/cache/build-{{.CHECKSUM}}.zip'
     cmds:
       - npm run build
+```
+
+#### Inherited sources/generates (`from: deps` and `from: cmds`)
+
+Wrapper tasks can inherit `sources` and `generates` from their dependencies or cmd task-calls using the `from:` directive. This avoids duplicating glob patterns across tasks and ensures cache keys reflect the full input/output set. Entries are deduplicated automatically.
+
+**`from: deps`** — copies entries from all direct dependencies:
+
+```yaml
+tasks:
+  all:
+    sources:
+      - from: deps
+    generates:
+      - from: deps
+    cache:
+      url: 'file:///tmp/cache/all-{{.CHECKSUM}}.zip'
+    deps:
+      - build-a
+      - build-b
+
+  build-a:
+    sources: [src/a/**/*.go]
+    generates: [bin/a]
+    cmds: [go build -o bin/a ./cmd/a]
+
+  build-b:
+    sources: [src/b/**/*.go]
+    generates: [bin/b]
+    cmds: [go build -o bin/b ./cmd/b]
+```
+
+**`from: cmds`** — copies entries from all cmd task-calls:
+
+```yaml
+tasks:
+  build:
+    sources:
+      - from: cmds
+    generates:
+      - from: cmds
+    cmds:
+      - task: compile
+      - task: link
+
+  compile:
+    sources: [src/**/*.c]
+    generates: [build/**/*.o]
+    cmds: [make compile]
+
+  link:
+    sources: [build/**/*.o]
+    generates: [bin/app]
+    cmds: [make link]
+```
+
+Literal globs and `from:` entries can be mixed freely:
+
+```yaml
+sources:
+  - config.yml        # own source
+  - from: deps        # plus all dep sources
 ```
 
 #### Per-task cache block (`file://` and `redis://` backends)
@@ -164,10 +230,9 @@ Exports checksum state and generated files for up-to-date tasks as a ZIP archive
 
 ```
 setup tasks (unconditional, sequential)
-  -> merge setup fingerprints into parent sources
   -> acquire lock (file or redis)
   -> run deps (parallel)
-  -> check fingerprint
+  -> check fingerprint (sources + generates, including from: resolution)
      -> try restore from cache (file:// or redis://)
      -> if miss: execute task, then save to cache
   -> release lock
