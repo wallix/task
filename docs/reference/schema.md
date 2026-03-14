@@ -469,6 +469,38 @@ tasks:
       - echo "All tests completed"
 ```
 
+#### `setup`
+
+- **Type**: `[]Dependency`
+- **Description**: Tasks to run **before** fingerprinting and locking. Setup
+  tasks run unconditionally every time the parent task is invoked — even when
+  the parent is already up to date. They execute sequentially in the order
+  listed.
+
+Use `setup` for operations that must complete before the parent's source
+fingerprint can be computed, such as code generation, version stamping, or
+fetching external inputs. Setup task outputs are **not** merged into the
+parent's fingerprint; use `sources` / `generates` with `from: deps` on the
+parent if you need that.
+
+```yaml
+tasks:
+  build:
+    setup:
+      - generate-version
+    sources:
+      - version.txt
+      - src/**/*.go
+    generates:
+      - bin/app
+    cmds:
+      - go build -o bin/app ./cmd
+
+  generate-version:
+    cmds:
+      - git describe --tags > version.txt
+```
+
 #### `desc`
 
 - **Type**: `string`

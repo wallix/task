@@ -1292,6 +1292,72 @@ You can enable prompts from the command line with `--interactive` or by setting
 
 :::
 
+## Task execution lifecycle
+
+When Task runs a task, it goes through a well-defined sequence of phases.
+Understanding this order is important when combining `setup`, `deps`,
+`sources`/`generates`, and `cache`.
+
+```
+1.  setup        — run unconditionally (even when the task is up to date)
+2.  lock         — acquire a lock (local flock or remote Redis lock)
+3.  fingerprint  — check sources/generates checksums against saved state
+4.  cache check  — if not up to date, try restoring generates from cache
+5.  deps         — run dependency tasks (only if not up to date / no cache hit)
+6.  commands     — execute the task's cmds
+7.  post-exec    — save fingerprint and push generates to cache
+8.  unlock       — release the lock
+```
+
+### Setup vs deps
+
+`setup` tasks run **before** fingerprinting and locking. They are for
+operations that may change the inputs used to compute the source fingerprint,
+such as code generation or version stamping. Setup tasks always run, even when
+the parent task turns out to be up to date.
+
+`deps` tasks run **after** the fingerprint and cache check. If the task is
+already up to date or has a cache hit, deps are skipped entirely. This is
+important for performance: deps often do the actual expensive build work, so
+skipping them on a cache hit avoids redundant computation.
+
+### Locking and concurrent processes
+
+When a task has both `sources` and `generates`, Task acquires a lock before
+the fingerprint check. This prevents race conditions when multiple processes
+(e.g. parallel CI jobs) run the same task simultaneously. The lock key
+includes the source checksum, so tasks with different inputs do not contend.
+
+If `cache.lock` is configured with a `redis://` URL, Task uses a distributed
+Redis lock with automatic heartbeat renewal. If the Redis server is
+unreachable, Task logs a warning and falls back to a local file lock. Local
+file locks time out after 1 hour by default (configurable via `lock_timeout`).
+
+### Cache interaction
+
+The cache check happens **before** deps. For tasks using `sources: from: deps`
+with a `cache` block, this means a cache hit restores the generated files and
+returns immediately — without running any dependency tasks. On a cache miss,
+deps and commands run normally, and the outputs are saved to the cache
+afterward.
+
+```yaml
+tasks:
+  build-all:
+    setup:
+      - generate-version    # always runs — may update source fingerprint
+    sources:
+      - from: deps          # source hash computed at parse time
+    generates:
+      - from: deps
+    cache:
+      url: 'redis://cache/build:{{urlsafe .TASK}}-{{.CHECKSUM}}.zip'
+      lock: 'redis://cache/lock:{{urlsafe .TASK}}-{{.CHECKSUM}}'
+    deps:
+      - build-a             # only runs on cache miss
+      - build-b
+```
+
 ## Variables
 
 Task allows you to set variables using the `vars` keyword. The following

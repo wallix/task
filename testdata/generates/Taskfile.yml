@@ -7,12 +7,12 @@ vars:
 tasks:
   abs.txt:
     desc: generates dest file based on absolute paths
-    deps:
+    setup:
       - sub/src.txt
     dir: sub
     cmds:
       - cat src.txt > '{{.BUILD_DIR}}/abs.txt'
-    method: checksum
+
     sources:
       - src.txt
     generates:
@@ -20,12 +20,12 @@ tasks:
 
   rel.txt:
     desc: generates dest file based on relative paths
-    deps:
+    setup:
       - sub/src.txt
     dir: sub
     cmds:
       - cat src.txt > '../rel.txt'
-    method: checksum
+
     sources:
       - src.txt
     generates:
@@ -36,16 +36,16 @@ tasks:
     cmds:
       - mkdir -p sub
       - echo "hello world" > sub/src.txt
-    method: checksum
+
     status:
       - test -f sub/src.txt
 
   'my text file.txt':
     desc: generate file with spaces in the name
-    deps: [sub/src.txt]
+    setup: [sub/src.txt]
     cmds:
       - cat sub/src.txt > 'my text file.txt'
-    method: checksum
+
     sources:
       - sub/src.txt
     generates:

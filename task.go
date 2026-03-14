@@ -243,10 +243,10 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			defer func() { _ = unlock.Unlock() }()
 		}
 
-		if err := e.runDeps(ctx, t); err != nil {
-			return err
-		}
-
+		// Check fingerprint and cache BEFORE running deps.
+		// This is critical for performance: if the task is already
+		// up to date or the cache has the result, we skip deps
+		// entirely (deps may do expensive builds like DITA).
 		skipFingerprinting := e.ForceAll || (!call.Indirect && e.Force)
 		cacheActive := e.cacheEnabled(t)
 		if !skipFingerprinting {
@@ -275,8 +275,9 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 				return nil
 			}
 
-			// Try to restore from cache before executing commands.
-			// If the cache provides the generates, re-check fingerprint.
+			// Try to restore from cache before running deps.
+			// If the cache provides the generates, we can skip
+			// both deps and commands entirely.
 			if cacheActive && !e.Dry && sourceHash != "" {
 				if e.cacheRestore(t) {
 					if err := checker.SetUpToDate(); err != nil {
@@ -285,6 +286,10 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 					return nil
 				}
 			}
+		}
+
+		if err := e.runDeps(ctx, t); err != nil {
+			return err
 		}
 
 		for _, p := range t.Prompt {

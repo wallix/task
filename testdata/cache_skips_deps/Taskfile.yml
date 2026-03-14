@@ -1,0 +1,27 @@
+version: '3'
+
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+
+tasks:
+  # Wrapper task with cache and from: deps.
+  # On a cache hit, deps should NOT run at all.
+  wrapper:
+    sources:
+      - from: deps
+    generates:
+      - from: deps
+    cache:
+      url: 'file://{{.CACHE_DIR}}/wrapper-{{.CHECKSUM}}.zip'
+    deps:
+      - expensive-build
+
+  expensive-build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - echo "EXPENSIVE-BUILD-RAN" >&2
+      - cp input.txt output.txt

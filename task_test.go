@@ -3635,6 +3635,182 @@ func TestCacheDepGeneratesNested(t *testing.T) {
 	assert.Contains(t, buff.String(), "restored from cache")
 }
 
+func TestCacheHitSkipsDeps(t *testing.T) {
+	// When a wrapper task with "from: deps" gets a cache hit, deps should
+	// NOT execute at all. This verifies the execution order: fingerprint
+	// and cache checks run BEFORE deps.
+	dir := copyTestdata(t, "cache_skips_deps")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+
+	// First run — populates cache, dep runs
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	assert.Contains(t, buff.String(), "EXPENSIVE-BUILD-RAN", "dep should run on first execution")
+
+	// Verify cache was saved
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "cache dir should have one zip")
+
+	// Delete generates and checksum — forces cache restore path
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	// Second run — should restore from cache, deps must NOT run
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "wrapper"}))
+
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	assert.Contains(t, buff.String(), "restored from cache")
+	assert.NotContains(t, buff.String(), "EXPENSIVE-BUILD-RAN",
+		"deps should NOT run when cache provides the result")
+}
+
+func TestUpToDateSkipsDeps(t *testing.T) {
+	t.Parallel()
+	// When a task with deps is already up-to-date (fingerprint match),
+	// deps should NOT execute. The fingerprint check runs before deps.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  parent:
+    sources:
+      - from: deps
+    generates:
+      - from: deps
+    deps:
+      - child
+
+  child:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - echo "CHILD-RAN" >&2
+      - cp input.txt output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// First run — child runs
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "parent"}))
+	assert.Contains(t, buff.String(), "CHILD-RAN")
+
+	// Second run — parent is up-to-date, child should NOT run
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "parent"}))
+	assert.Contains(t, buff.String(), "up to date")
+	assert.NotContains(t, buff.String(), "CHILD-RAN",
+		"deps should NOT run when parent is already up to date")
+}
+
+func TestCachedDepSkipsExpensiveWork(t *testing.T) {
+	// Mimics a pattern where a wrapper task (e.g. doc:manuals)
+	// depends on a build task (e.g. doc:manuals:build) that does
+	// the actual expensive work. Previously we had to call the build task
+	// directly first to prime the cache, then call the wrapper:
+	//
+	//   task -C 1 doc:manuals:build   # prime cache
+	//   task -C 1 doc:manuals         # wrapper
+	//
+	// With the wrapper alone the call to doc:manuals would check its fingerprint, see it's out of date,
+	// call its dep doc:manuals:build, which would restore from cache and skip the expensive build.
+
+	dir := t.TempDir()
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "input.txt"), []byte("hello\n"), 0o644))
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+vars:
+  CACHE_DIR:
+    sh: echo "$CACHE_DIR"
+
+tasks:
+  # Wrapper — like doc:bastion:manuals. No cmds, no cache, just deps.
+  manuals:
+    deps:
+      - manuals:build
+
+  # Build — like doc:bastion:manuals:build. Does expensive work, has cache.
+  manuals:build:
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cache:
+      url: 'file://{{.CACHE_DIR}}/build-{{.CHECKSUM}}.zip'
+    cmds:
+      - echo "BUILD-RAN" >&2
+      - cp input.txt output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+
+	// === Job A: first CI job builds and populates cache ===
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "manuals"}))
+	assert.Contains(t, buff.String(), "BUILD-RAN", "build dep should run on first invocation")
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+
+	// === Job B: different CI job, no local state, only the shared cache ===
+	require.NoError(t, os.Remove(filepath.Join(dir, "output.txt")))
+	require.NoError(t, os.RemoveAll(tempDir))
+
+	buff.Reset()
+	e2 := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e2.Setup())
+
+	// Just call the wrapper — no need to call manuals:build first
+	require.NoError(t, e2.Run(t.Context(), &task.Call{Task: "manuals"}))
+
+	assert.FileExists(t, filepath.Join(dir, "output.txt"))
+	assert.Contains(t, buff.String(), "restored from cache",
+		"wrapper should restore from cache without calling build dep first")
+	assert.NotContains(t, buff.String(), "BUILD-RAN",
+		"build dep should NOT run when wrapper gets a cache hit")
+}
+
 func TestFromSourcesDeps(t *testing.T) {
 	t.Parallel()
 	// "from: deps" in sources should collect sources from direct deps.
