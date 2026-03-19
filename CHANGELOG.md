@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.62.0 - 2026-03-19
+
+### Improved
+
+- Cache archives now store a generates checksum in the zip comment.
+  On restore, the checksum is recomputed and compared against the stored
+  value. Mismatches (corrupt or stale cache) are rejected with a warning
+  and the task runs normally. Archives without metadata (from older
+  versions) are also rejected.
+
 ## v3.61.0 - 2026-03-19
 
 ### Improved
