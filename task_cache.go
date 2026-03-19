@@ -198,44 +198,34 @@ func (e *Executor) cacheSave(t *ast.Task) {
 	}
 }
 
-// cacheSaveFile collects generated files and writes them to a zip at the
-// given path. Skips writing if the archive already matches.
-func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
+// cacheBuildZip creates a temporary zip of the task's generated files with
+// cache metadata in the zip comment. Returns the temp file path and the list
+// of files included, or ("", nil) if the task is not up-to-date or has no
+// generates. The caller is responsible for removing the temp file.
+func (e *Executor) cacheBuildZip(t *ast.Task) (zipPath string, files []string) {
 	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t)
 	st, err := checker.Status()
 	if err != nil || !st.UpToDate {
-		return
+		return "", nil
+	}
+	if len(st.CacheFiles) == 0 {
+		return "", nil
 	}
 
-	files := st.CacheFiles
-	if len(files) == 0 {
-		return
-	}
-
-	// Skip if archive already matches
-	if archiveMatches(e.Dir, zipPath, files) {
-		return
-	}
-
-	if err := os.MkdirAll(filepath.Dir(zipPath), 0o755); err != nil {
-		e.Logger.VerboseErrf(logger.Yellow, "task: cache save mkdir: %v\n", err)
-		return
-	}
-
-	zf, err := os.Create(zipPath)
+	tmpFile, err := os.CreateTemp("", "task-cache-*.zip")
 	if err != nil {
-		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", zipPath, err)
-		return
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", t.Name(), err)
+		return "", nil
 	}
-	defer zf.Close()
 
-	zw := zip.NewWriter(zf)
-	for _, f := range files {
+	zw := zip.NewWriter(tmpFile)
+	for _, f := range st.CacheFiles {
 		if err := addFileToZip(zw, e.Dir, f); err != nil {
 			e.Logger.VerboseErrf(logger.Yellow, "task: cache save add %s: %v\n", f, err)
 			zw.Close()
-			os.Remove(zipPath)
-			return
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			return "", nil
 		}
 	}
 	if err := setCacheComment(zw, t.Name(), checker.SourceValue(), st.GeneratesHash); err != nil {
@@ -243,7 +233,39 @@ func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
 	}
 	if err := zw.Close(); err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache save finalize: %v\n", err)
-		os.Remove(zipPath)
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return "", nil
+	}
+	tmpFile.Close()
+
+	return tmpFile.Name(), st.CacheFiles
+}
+
+// cacheSaveFile collects generated files and writes them to a zip at the
+// given path. Skips writing if the archive already matches.
+func (e *Executor) cacheSaveFile(t *ast.Task, destPath string) {
+	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t)
+	st, err := checker.Status()
+	if err != nil || !st.UpToDate || len(st.CacheFiles) == 0 {
+		return
+	}
+	if archiveMatches(e.Dir, destPath, st.CacheFiles) {
+		return
+	}
+
+	tmpPath, _ := e.cacheBuildZip(t)
+	if tmpPath == "" {
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save mkdir: %v\n", err)
+		return
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", destPath, err)
 		return
 	}
 
@@ -272,42 +294,11 @@ func (e *Executor) cacheRestoreRedis(t *ast.Task, u *url.URL) (bool, cacheMeta) 
 
 // cacheSaveRedis builds a zip of generates and uploads to Redis.
 func (e *Executor) cacheSaveRedis(t *ast.Task, u *url.URL) {
-	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t)
-	st, err := checker.Status()
-	if err != nil || !st.UpToDate {
+	tmpPath, _ := e.cacheBuildZip(t)
+	if tmpPath == "" {
 		return
 	}
-	files := st.CacheFiles
-	if len(files) == 0 {
-		return
-	}
-
-	tmpFile, err := os.CreateTemp("", "task-cache-*.zip")
-	if err != nil {
-		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", t.Name(), err)
-		return
-	}
-	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
-
-	zw := zip.NewWriter(tmpFile)
-	for _, f := range files {
-		if err := addFileToZip(zw, e.Dir, f); err != nil {
-			e.Logger.VerboseErrf(logger.Yellow, "task: cache save add %s: %v\n", f, err)
-			zw.Close()
-			tmpFile.Close()
-			return
-		}
-	}
-	if err := setCacheComment(zw, t.Name(), checker.SourceValue(), st.GeneratesHash); err != nil {
-		e.Logger.VerboseErrf(logger.Yellow, "task: cache save meta: %v\n", err)
-	}
-	if err := zw.Close(); err != nil {
-		e.Logger.VerboseErrf(logger.Yellow, "task: cache save finalize: %v\n", err)
-		tmpFile.Close()
-		return
-	}
-	tmpFile.Close()
 
 	if err := redis.CachePut(u, tmpPath); err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", t.Name(), err)
