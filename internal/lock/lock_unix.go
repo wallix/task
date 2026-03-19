@@ -41,3 +41,8 @@ func lockFileTry(f *os.File) error {
 func unlockFile(f *os.File) {
 	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 }
+
+// processAlive reports whether a process with the given PID exists.
+func processAlive(pid int) bool {
+	return syscall.Kill(pid, 0) == nil
+}

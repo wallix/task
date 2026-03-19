@@ -52,3 +52,19 @@ func unlockFile(f *os.File) {
 		&ol,
 	)
 }
+
+// processAlive reports whether a process with the given PID exists.
+func processAlive(pid int) bool {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return false
+	}
+	var exitCode uint32
+	err = windows.GetExitCodeProcess(h, &exitCode)
+	windows.CloseHandle(h)
+	if err != nil {
+		return false
+	}
+	const stillActive = 259
+	return exitCode == stillActive
+}

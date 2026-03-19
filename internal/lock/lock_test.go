@@ -2,6 +2,7 @@ package lock_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -337,5 +338,70 @@ func TestFlockHolderInfo(t *testing.T) {
 	require.Contains(t, data, "pid=")
 	require.Contains(t, data, "lock=holder-test")
 
+	require.NoError(t, u.Unlock())
+}
+
+func TestProcessAlive(t *testing.T) {
+	t.Parallel()
+	// Our own process is alive.
+	require.True(t, lock.ProcessAlive(os.Getpid()))
+	// Use a very high PID that almost certainly doesn't exist.
+	require.False(t, lock.ProcessAlive(1<<22-1))
+}
+
+func TestReadHolderPID(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 42, lock.ReadHolderPID("pid=42\nlock=test"))
+	require.Equal(t, 0, lock.ReadHolderPID("no-pid-here"))
+	require.Equal(t, 0, lock.ReadHolderPID(""))
+	require.Equal(t, 0, lock.ReadHolderPID("pid=notanumber"))
+}
+
+func TestReadHolderInfo(t *testing.T) {
+	// Verify that holder info is available while a lock is held,
+	// and that it contains the expected fields.
+	t.Parallel()
+	dir := t.TempDir()
+	locker, err := lock.NewFlock(dir)
+	require.NoError(t, err)
+
+	u, err := locker.Lock("info-test", nil)
+	require.NoError(t, err)
+
+	info := lock.ReadHolderInfo(dir, "info-test")
+	require.Contains(t, info, "pid=")
+	require.Contains(t, info, "lock=info-test")
+
+	pid := lock.ReadHolderPID(info)
+	require.Equal(t, os.Getpid(), pid)
+
+	require.NoError(t, u.Unlock())
+}
+
+func TestStaleLockFileEvicted(t *testing.T) {
+	// Simulate a stale lock file left by a dead process.
+	// Write a lock file with a PID that doesn't exist, then verify
+	// that Lock() succeeds promptly (the stale file is evicted).
+	if runtime.GOOS == "linux" {
+		t.Skip("Linux uses abstract sockets, not flock — stale files are not possible")
+	}
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create a stale lock file with a dead PID.
+	stalePath := filepath.Join(dir, "stale-test.lock")
+	deadPID := 1<<22 - 1 // almost certainly not running
+	require.NoError(t, os.WriteFile(stalePath,
+		[]byte(fmt.Sprintf("pid=%d\nlock=stale-test\n", deadPID)), 0o644))
+
+	locker, err := lock.NewFlockWithTimeout(dir, 2*time.Second)
+	require.NoError(t, err)
+
+	start := time.Now()
+	u, err := locker.Lock("stale-test", nil)
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	require.Less(t, elapsed, time.Second)
 	require.NoError(t, u.Unlock())
 }

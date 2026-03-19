@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
-	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/wallix/task/v3/errors"
 )
@@ -17,7 +19,10 @@ import (
 // tryAcquire attempts to acquire a lock by binding an abstract unix socket.
 // The kernel automatically frees the address when the process dies,
 // so dead processes can never hold a stale lock.
-// Returns errWouldBlock if the address is already in use.
+//
+// Once the lock is acquired a background goroutine accepts connections
+// and writes the holder identity (pid, lock name, acquisition time) to
+// each client. This lets waiters query the holder without any files.
 func (f *Flock) tryAcquire(name string) (Unlocker, error) {
 	addr := socketAddr(f.dir, name)
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: addr, Net: "unix"})
@@ -27,10 +32,12 @@ func (f *Flock) tryAcquire(name string) (Unlocker, error) {
 		}
 		return nil, err
 	}
-	// Write holder info for diagnostics (best-effort).
-	infoPath := filepath.Join(f.dir, safeName(name)+".lock")
-	writeInfoFile(infoPath, name)
-	return &socketHandle{ln: ln, infoPath: infoPath}, nil
+	h := &socketHandle{
+		ln:   ln,
+		info: fmt.Sprintf("pid=%d\nlock=%s\nacquired=%s", os.Getpid(), name, time.Now().Format(time.RFC3339)),
+	}
+	go h.serve()
+	return h, nil
 }
 
 // socketAddr derives an abstract unix socket address from the directory
@@ -43,25 +50,60 @@ func socketAddr(dir, name string) string {
 }
 
 type socketHandle struct {
-	ln       *net.UnixListener
-	infoPath string
+	ln   *net.UnixListener
+	info string // holder identity sent to each connecting client
+}
+
+// serve accepts connections and writes the holder info to each client.
+// Each connection is handled in its own goroutine with a write deadline
+// so that a misbehaving client (that connects but never reads) cannot
+// block the holder from serving other clients.
+// It returns when the listener is closed (i.e. on Unlock).
+func (h *socketHandle) serve() {
+	for {
+		conn, err := h.ln.Accept()
+		if err != nil {
+			return
+		}
+		go func() {
+			defer conn.Close()
+			_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+			_, _ = io.WriteString(conn, h.info)
+		}()
+	}
 }
 
 func (h *socketHandle) Unlock() error {
 	if h.ln == nil {
 		return nil
 	}
-	_ = os.Remove(h.infoPath)
 	return h.ln.Close()
 }
 
-func writeInfoFile(path, name string) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+// readHolderInfo connects to the lock holder's socket and reads its
+// identity. Returns "unknown" if the socket is not reachable.
+func readHolderInfo(dir, name string) string {
+	addr := socketAddr(dir, name)
+	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: addr, Net: "unix"})
 	if err != nil {
-		return
+		return "unknown"
 	}
-	defer f.Close()
-	fmt.Fprintf(f, "pid=%d\nlock=%s\n", os.Getpid(), name)
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	data, err := io.ReadAll(conn)
+	if err != nil {
+		return "unknown"
+	}
+	s := strings.TrimSpace(string(data))
+	if s == "" {
+		return "unknown"
+	}
+	return s
+}
+
+// processAlive reports whether a process with the given PID exists.
+func processAlive(pid int) bool {
+	return syscall.Kill(pid, 0) == nil
 }
 
 func isAddrInUse(err error) bool {
