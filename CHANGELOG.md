@@ -1,5 +1,34 @@
 # Changelog
 
+## v3.61.0 - 2026-03-19
+
+### Improved
+
+- On Linux, file locks (`flock`) are replaced by abstract unix domain sockets.
+  The kernel automatically releases the lock when the holding process dies,
+  eliminating stale locks entirely. The lock holder serves its identity (PID,
+  lock name, acquisition time) over the socket itself — no lock files needed.
+
+- On other platforms (macOS, Windows), the flock path now detects stale lock
+  files by checking whether the holder PID is still alive. If the holder is
+  dead, the lock file is removed so the next retry succeeds immediately.
+  This handles stale locks on NFS or after unclean shutdowns.
+
+### Fixes
+
+- Fix file lock retry loop silently swallowing non-contention errors. The
+  `flock(LOCK_NB)` call could return errors other than `EWOULDBLOCK` (e.g.
+  `EBADF`, `ENOLCK`), which were previously treated as contention and retried
+  forever. The retry loop now fails fast on real errors and only retries on
+  genuine contention.
+
+### Maintenance
+
+- `task lint` and `task format` now use `go run` to invoke golangci-lint,
+  removing the need to have it pre-installed. The version is pinned in a
+  single `.golangci-lint-version` file shared between the Taskfile and
+  GitHub CI.
+
 ## v3.60.0 - 2026-03-14
 
 ### Features
