@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/wallix/task/v3/errors"
 )
 
 // Locker acquires exclusive locks for tasks. Implementations may use
@@ -27,6 +29,9 @@ const (
 	flockDefaultTimeout  = 1 * time.Hour
 	flockWaitLogInterval = 10 * time.Minute
 )
+
+// errWouldBlock is returned by lockFileTry when the lock is held.
+var errWouldBlock = errors.New("lock: would block")
 
 // Flock implements Locker using OS file locks.
 // Locks are automatically released by the OS if the process dies.
@@ -71,17 +76,21 @@ func (f *Flock) Lock(name string, onContention func()) (Unlocker, error) {
 	if timeout == 0 {
 		timeout = flockDefaultTimeout
 	}
+
 	deadline := time.Now().Add(timeout)
 	notified := false
 	lastLog := time.Time{}
 
 	for {
-		err = lockFile(file)
+		err = lockFileTry(file)
 		if err == nil {
-			_ = file.Truncate(0)
-			_, _ = file.Seek(0, 0)
-			fmt.Fprintf(file, "pid=%d\nlock=%s\n", os.Getpid(), name)
+			writeLockInfo(file, name)
 			return &flockHandle{file: file, name: name}, nil
+		}
+		if !errors.Is(err, errWouldBlock) {
+			// Real error (EBADF, ENOLCK, etc.) — don't retry.
+			file.Close()
+			return nil, fmt.Errorf("lock: failed to acquire %s: %w", path, err)
 		}
 		if !notified && onContention != nil {
 			onContention()
@@ -97,6 +106,12 @@ func (f *Flock) Lock(name string, onContention func()) (Unlocker, error) {
 		}
 		time.Sleep(flockRetryInterval)
 	}
+}
+
+func writeLockInfo(file *os.File, name string) {
+	_ = file.Truncate(0)
+	_, _ = file.Seek(0, 0)
+	fmt.Fprintf(file, "pid=%d\nlock=%s\n", os.Getpid(), name)
 }
 
 // ReadHolderFile reads the holder info from a lock file identified by
