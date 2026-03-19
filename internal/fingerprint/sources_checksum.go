@@ -126,7 +126,7 @@ func (c *ChecksumChecker) IsUpToDate() (bool, error) {
 	oldHashes := strings.TrimSpace(string(data))
 	oldSourcesHash, oldGeneratesHash, _ := strings.Cut(oldHashes, "\n")
 
-	newGeneratesHash, err := c.generatesChecksum()
+	newGeneratesHash, err := c.GeneratesChecksum()
 	if err != nil {
 		return false, err
 	}
@@ -162,7 +162,7 @@ func (c *ChecksumChecker) Status() (*TaskStatus, error) {
 		return nil, err
 	}
 
-	newGeneratesHash, err := c.generatesChecksum()
+	newGeneratesHash, err := c.GeneratesChecksum()
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ func (c *ChecksumChecker) SetUpToDate() error {
 		return err
 	}
 
-	newGeneratesHash, err := c.generatesChecksum()
+	newGeneratesHash, err := c.GeneratesChecksum()
 	if err != nil {
 		return err
 	}
@@ -240,8 +240,8 @@ func (c *ChecksumChecker) sourcesChecksum() (string, error) {
 	return c.checksum(c.sourcesGlobs, c.srcData)
 }
 
-// generatesChecksum computes the current generates hash from disk.
-func (c *ChecksumChecker) generatesChecksum() (string, error) {
+// GeneratesChecksum computes the current generates hash from disk.
+func (c *ChecksumChecker) GeneratesChecksum() (string, error) {
 	return c.checksum(c.task.Generates, nil)
 }
 

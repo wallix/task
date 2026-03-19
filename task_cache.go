@@ -16,6 +16,9 @@ import (
 	"github.com/wallix/task/v3/taskfile/ast"
 )
 
+// Cache metadata is stored as newline-separated key:value pairs in the
+// zip comment: task, sources hash, and generates hash.
+
 // cacheEnabled evaluates whether the cache block is active for a task.
 // Returns false if the block is nil, explicitly disabled, or if the
 // resolved enabled condition is empty/false.
@@ -56,16 +59,73 @@ func (e *Executor) evalCacheURL(t *ast.Task) (*url.URL, error) {
 	return u, nil
 }
 
+// cacheVerifyMeta validates the cache metadata against the current task
+// state: task name, sources hash, and generates checksum. On success it
+// calls checker.SetUpToDate() to record the fingerprint.
+func (e *Executor) cacheVerifyMeta(t *ast.Task, checker *fingerprint.ChecksumChecker, meta cacheMeta) error {
+	e.Logger.VerboseOutf(logger.Magenta, "task: cache verify %q: task=%s sources=%s generates=%s\n", t.Name(), meta.task, meta.sources, meta.generates)
+
+	if meta.task != "" && meta.task != t.Name() {
+		return fmt.Errorf("task name mismatch: cached %q, expected %q", meta.task, t.Name())
+	}
+	e.Logger.VerboseOutf(logger.Magenta, "task: cache verify %q: task name OK\n", t.Name())
+
+	if meta.sources != "" && meta.sources != checker.SourceValue() {
+		return fmt.Errorf("sources checksum mismatch: cached %s, got %s", meta.sources, checker.SourceValue())
+	}
+	e.Logger.VerboseOutf(logger.Magenta, "task: cache verify %q: sources hash OK\n", t.Name())
+
+	currentHash, err := checker.GeneratesChecksum()
+	if err != nil {
+		return fmt.Errorf("generates checksum failed: %w", err)
+	}
+	if currentHash != meta.generates {
+		return fmt.Errorf("generates checksum mismatch: cached %s, got %s", meta.generates, currentHash)
+	}
+	e.Logger.VerboseOutf(logger.Magenta, "task: cache verify %q: generates hash OK\n", t.Name())
+
+	return checker.SetUpToDate()
+}
+
+// setCacheComment stores task metadata as newline-separated key:value
+// pairs in the zip comment.
+func setCacheComment(zw *zip.Writer, taskName, sourcesHash, generatesHash string) error {
+	comment := "task:" + taskName + "\nsources:" + sourcesHash + "\ngenerates:" + generatesHash
+	return zw.SetComment(comment)
+}
+
+// cacheMeta holds the metadata stored in the zip comment.
+type cacheMeta struct {
+	task      string
+	sources   string
+	generates string
+}
+
+// readCacheComment parses the zip comment into a cacheMeta struct.
+func readCacheComment(zr *zip.Reader) cacheMeta {
+	var m cacheMeta
+	for _, line := range strings.Split(zr.Comment, "\n") {
+		if v, ok := strings.CutPrefix(line, "task:"); ok {
+			m.task = v
+		} else if v, ok := strings.CutPrefix(line, "sources:"); ok {
+			m.sources = v
+		} else if v, ok := strings.CutPrefix(line, "generates:"); ok {
+			m.generates = v
+		}
+	}
+	return m
+}
+
 // cacheRestore attempts to download and extract a cached archive.
-// Returns true if the cache was restored successfully.
-func (e *Executor) cacheRestore(t *ast.Task) bool {
+// On success returns (true, meta). The caller must verify the metadata.
+func (e *Executor) cacheRestore(t *ast.Task) (bool, cacheMeta) {
 	u, err := e.evalCacheURL(t)
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache restore %q: %v\n", t.Name(), err)
-		return false
+		return false, cacheMeta{}
 	}
 	if u == nil {
-		return false
+		return false, cacheMeta{}
 	}
 
 	switch u.Scheme {
@@ -75,40 +135,46 @@ func (e *Executor) cacheRestore(t *ast.Task) bool {
 		return e.cacheRestoreRedis(t, u)
 	default:
 		e.Logger.VerboseErrf(logger.Yellow, "task: unsupported cache scheme %q\n", u.Scheme)
-		return false
+		return false, cacheMeta{}
 	}
 }
 
 // cacheRestoreFile extracts a zip archive from a file:// path into the
-// task's working directory. Returns true on success.
-func (e *Executor) cacheRestoreFile(t *ast.Task, zipPath string) bool {
+// task's working directory. Returns (true, meta) on success.
+func (e *Executor) cacheRestoreFile(t *ast.Task, zipPath string) (bool, cacheMeta) {
 	f, err := os.Open(zipPath)
 	if err != nil {
-		return false // miss — file doesn't exist
+		return false, cacheMeta{} // miss — file doesn't exist
 	}
 	defer f.Close()
 
 	stat, err := f.Stat()
 	if err != nil {
-		return false
+		return false, cacheMeta{}
 	}
 
 	zr, err := zip.NewReader(f, stat.Size())
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache file %q corrupt: %v\n", zipPath, err)
-		return false
+		return false, cacheMeta{}
+	}
+
+	meta := readCacheComment(zr)
+	if meta.generates == "" {
+		e.Logger.Errf(logger.Yellow, "task: WARNING: cache for %q has no generates checksum, rejecting\n", t.Name())
+		return false, cacheMeta{}
 	}
 
 	baseDir := e.Dir
 	for _, entry := range zr.File {
 		if err := extractZipEntry(baseDir, entry); err != nil {
 			e.Logger.VerboseErrf(logger.Yellow, "task: cache extract %s: %v\n", entry.Name, err)
-			return false
+			return false, cacheMeta{}
 		}
 	}
 
 	e.Logger.Errf(logger.Magenta, "task: %q restored from cache\n", t.Name())
-	return true
+	return true, meta
 }
 
 // cacheSave exports generates to a zip and uploads to the cache URL.
@@ -135,7 +201,8 @@ func (e *Executor) cacheSave(t *ast.Task) {
 // cacheSaveFile collects generated files and writes them to a zip at the
 // given path. Skips writing if the archive already matches.
 func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
-	st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
+	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t)
+	st, err := checker.Status()
 	if err != nil || !st.UpToDate {
 		return
 	}
@@ -171,6 +238,9 @@ func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
 			return
 		}
 	}
+	if err := setCacheComment(zw, t.Name(), checker.SourceValue(), st.GeneratesHash); err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save meta: %v\n", err)
+	}
 	if err := zw.Close(); err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache save finalize: %v\n", err)
 		os.Remove(zipPath)
@@ -181,28 +251,29 @@ func (e *Executor) cacheSaveFile(t *ast.Task, zipPath string) {
 }
 
 // cacheRestoreRedis downloads a zip from Redis and extracts it.
-func (e *Executor) cacheRestoreRedis(t *ast.Task, u *url.URL) bool {
+func (e *Executor) cacheRestoreRedis(t *ast.Task, u *url.URL) (bool, cacheMeta) {
 	tmpDir, err := os.MkdirTemp("", "task-cache-*")
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache restore %q: %v\n", t.Name(), err)
-		return false
+		return false, cacheMeta{}
 	}
 	defer os.RemoveAll(tmpDir)
 
 	localPath, err := redis.CacheGet(u, tmpDir)
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache restore %q: %v\n", t.Name(), err)
-		return false
+		return false, cacheMeta{}
 	}
 	if localPath == "" {
-		return false // cache miss
+		return false, cacheMeta{} // cache miss
 	}
 	return e.cacheRestoreFile(t, localPath)
 }
 
 // cacheSaveRedis builds a zip of generates and uploads to Redis.
 func (e *Executor) cacheSaveRedis(t *ast.Task, u *url.URL) {
-	st, err := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t).Status()
+	checker := fingerprint.NewChecksumChecker(e.TempDir.Fingerprint, t)
+	st, err := checker.Status()
 	if err != nil || !st.UpToDate {
 		return
 	}
@@ -227,6 +298,9 @@ func (e *Executor) cacheSaveRedis(t *ast.Task, u *url.URL) {
 			tmpFile.Close()
 			return
 		}
+	}
+	if err := setCacheComment(zw, t.Name(), checker.SourceValue(), st.GeneratesHash); err != nil {
+		e.Logger.VerboseErrf(logger.Yellow, "task: cache save meta: %v\n", err)
 	}
 	if err := zw.Close(); err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache save finalize: %v\n", err)

@@ -279,11 +279,12 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 			// If the cache provides the generates, we can skip
 			// both deps and commands entirely.
 			if cacheActive && !e.Dry && sourceHash != "" {
-				if e.cacheRestore(t) {
-					if err := checker.SetUpToDate(); err != nil {
-						return err
+				if ok, meta := e.cacheRestore(t); ok {
+					if err := e.cacheVerifyMeta(t, checker, meta); err != nil {
+						e.Logger.Errf(logger.Yellow, "task: WARNING: cache for %q: %v, running task normally\n", t.Name(), err)
+					} else {
+						return nil
 					}
-					return nil
 				}
 			}
 		}

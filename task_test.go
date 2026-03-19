@@ -1,6 +1,7 @@
 package task_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -3487,6 +3488,58 @@ func TestCacheChecksumConsistency(t *testing.T) {
 		"resolved output should reflect the new variable value")
 	assert.NotContains(t, string(newOutput), "hello",
 		"resolved output should no longer contain the old variable value")
+}
+
+func TestCacheMetaSourcesMatchesChecksum(t *testing.T) {
+	// The sources hash stored in the zip comment must match the CHECKSUM
+	// template variable (which is embedded in the cache zip filename).
+	dir := copyTestdata(t, "cache_checksum_consistency")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("CACHE_DIR", cacheDir)
+	t.Setenv("GREETING", "hello")
+	tempDir := filepath.Join(dir, ".task")
+
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "build"}))
+
+	// Find the cache zip
+	entries, err := os.ReadDir(cacheDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	zipName := entries[0].Name()
+
+	// Extract CHECKSUM from filename: "build-<CHECKSUM>.zip"
+	checksum := strings.TrimPrefix(zipName, "build-")
+	checksum = strings.TrimSuffix(checksum, ".zip")
+	require.NotEmpty(t, checksum)
+
+	// Read zip comment
+	zipPath := filepath.Join(cacheDir, zipName)
+	zf, err := os.Open(zipPath)
+	require.NoError(t, err)
+	defer zf.Close()
+	stat, err := zf.Stat()
+	require.NoError(t, err)
+	zr, err := zip.NewReader(zf, stat.Size())
+	require.NoError(t, err)
+
+	// Parse sources hash from comment
+	var sourcesHash string
+	for _, line := range strings.Split(zr.Comment, "\n") {
+		if v, ok := strings.CutPrefix(line, "sources:"); ok {
+			sourcesHash = v
+		}
+	}
+
+	assert.Equal(t, checksum, sourcesHash,
+		"sources hash in zip comment must match CHECKSUM in filename")
 }
 
 func TestCacheRejectsGeneratesOutsideRootDir(t *testing.T) {
