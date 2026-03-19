@@ -1,6 +1,11 @@
 package lock_test
 
 import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -255,6 +260,62 @@ func TestFlockConcurrentHighContention(t *testing.T) {
 	if maxConcurrent.Load() != 1 {
 		t.Fatalf("expected max concurrency of 1, got %d", maxConcurrent.Load())
 	}
+}
+
+func TestLockReleasedOnProcessDeath(t *testing.T) {
+	// Verifies that a lock held by a dead process is automatically released.
+	// This is the key property of the abstract-socket implementation on Linux;
+	// on other platforms the subprocess explicitly exits which closes the fd.
+	if runtime.GOOS == "windows" {
+		t.Skip("subprocess helper not implemented for windows")
+	}
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Build a small helper binary that acquires a lock, signals readiness
+	// via a file, then sleeps forever (so we can kill it).
+	helper := filepath.Join(dir, "lock-holder")
+	ctx := context.Background()
+	build := exec.CommandContext(ctx, "go", "build", "-o", helper, "-ldflags", "-s -w")
+	build.Dir = filepath.Join("testdata", "lock-holder")
+	build.Stderr = os.Stderr
+	require.NoError(t, build.Run(), "building helper")
+
+	readyFile := filepath.Join(dir, "ready")
+	cmd := exec.CommandContext(ctx, helper, "-dir", dir, "-name", "death-test", "-ready", readyFile)
+	cmd.Stderr = os.Stderr
+	require.NoError(t, cmd.Start())
+
+	// Wait for the subprocess to signal it holds the lock.
+	deadline := time.After(10 * time.Second)
+	for {
+		if _, err := os.Stat(readyFile); err == nil {
+			break
+		}
+		select {
+		case <-deadline:
+			_ = cmd.Process.Kill()
+			t.Fatal("helper never signaled ready")
+		default:
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+
+	// The lock is held. Our own attempt should block.
+	locker, err := lock.NewFlockWithTimeout(dir, 5*time.Second)
+	require.NoError(t, err)
+
+	// Kill the holder.
+	require.NoError(t, cmd.Process.Kill())
+	_ = cmd.Wait()
+
+	// Now we should be able to acquire the lock promptly.
+	start := time.Now()
+	u, err := locker.Lock("death-test", nil)
+	elapsed := time.Since(start)
+	require.NoError(t, err, "should acquire lock after holder dies")
+	require.Less(t, elapsed, 3*time.Second, "lock acquisition took too long after holder death")
+	require.NoError(t, u.Unlock())
 }
 
 func TestFlockHolderInfo(t *testing.T) {

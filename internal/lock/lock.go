@@ -65,13 +65,11 @@ func NewFlockWithTimeout(dir string, timeout time.Duration) (*Flock, error) {
 // Lock acquires an exclusive lock for name. It blocks until the lock
 // is available, the timeout expires, or an error occurs.
 // onContention is called once when contention is first detected.
+//
+// On Linux the lock uses an abstract unix socket so the kernel
+// automatically releases it if the holding process dies.
+// On other platforms it falls back to OS file locks (flock / LockFileEx).
 func (f *Flock) Lock(name string, onContention func()) (Unlocker, error) {
-	path := filepath.Join(f.dir, safeName(name)+".lock")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return nil, fmt.Errorf("lock: failed to open %s: %w", path, err)
-	}
-
 	timeout := f.timeout
 	if timeout == 0 {
 		timeout = flockDefaultTimeout
@@ -82,36 +80,26 @@ func (f *Flock) Lock(name string, onContention func()) (Unlocker, error) {
 	lastLog := time.Time{}
 
 	for {
-		err = lockFileTry(file)
+		u, err := f.tryAcquire(name)
 		if err == nil {
-			writeLockInfo(file, name)
-			return &flockHandle{file: file, name: name}, nil
+			return u, nil
 		}
 		if !errors.Is(err, errWouldBlock) {
-			// Real error (EBADF, ENOLCK, etc.) — don't retry.
-			file.Close()
-			return nil, fmt.Errorf("lock: failed to acquire %s: %w", path, err)
+			return nil, fmt.Errorf("lock: failed to acquire %q: %w", name, err)
 		}
 		if !notified && onContention != nil {
 			onContention()
 			notified = true
 		}
 		if time.Now().After(deadline) {
-			file.Close()
 			return nil, fmt.Errorf("lock: timeout after %v acquiring %q", timeout, name)
 		}
 		if f.OnWaiting != nil && time.Since(lastLog) >= flockWaitLogInterval {
-			f.OnWaiting(name, readHolder(path))
+			f.OnWaiting(name, readHolder(filepath.Join(f.dir, safeName(name)+".lock")))
 			lastLog = time.Now()
 		}
 		time.Sleep(flockRetryInterval)
 	}
-}
-
-func writeLockInfo(file *os.File, name string) {
-	_ = file.Truncate(0)
-	_, _ = file.Seek(0, 0)
-	fmt.Fprintf(file, "pid=%d\nlock=%s\n", os.Getpid(), name)
 }
 
 // ReadHolderFile reads the holder info from a lock file identified by
@@ -139,18 +127,6 @@ func readHolder(path string) string {
 	return s
 }
 
-type flockHandle struct {
-	file *os.File
-	name string
-}
-
-func (h *flockHandle) Unlock() error {
-	if h.file == nil {
-		return nil
-	}
-	unlockFile(h.file)
-	return h.file.Close()
-}
 
 // unsafeChars matches characters outside the safe set [a-zA-Z0-9_.-].
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]`)
