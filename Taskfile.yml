@@ -2,6 +2,9 @@ version: '3'
 
 vars:
   BIN: "{{.ROOT_DIR}}/bin"
+  GOLANGCI_LINT_VERSION:
+    sh: cat .golangci-lint-version
+  GOLANGCI_LINT: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
   GOTESTSUM_FORMAT: '{{if .CI}}github-actions{{else}}pkgname{{end}}'
 
 env:
@@ -88,7 +91,7 @@ tasks:
       - .golangci.yml
       - go.mod
     cmds:
-      - golangci-lint run
+      - "{{.GOLANGCI_LINT}} run"
 
   lint:fix:
     desc: Runs golangci-lint and fixes any issues
@@ -97,7 +100,7 @@ tasks:
       - .golangci.yml
       - go.mod
     cmds:
-      - golangci-lint run --fix
+      - "{{.GOLANGCI_LINT}} run --fix"
 
   format:
     desc: Runs golangci-lint and formats any Go files
@@ -106,7 +109,7 @@ tasks:
       - './**/*.go'
       - .golangci.yml
     cmds:
-      - golangci-lint fmt
+      - "{{.GOLANGCI_LINT}} fmt"
 
   sleepit:build:
     desc: Builds the sleepit test helper
