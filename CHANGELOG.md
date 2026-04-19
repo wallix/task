@@ -1,5 +1,21 @@
 # Changelog
 
+## v3.63.0 - 2026-04-19
+
+### Fixes
+
+- Fix `from: deps` / `from: cmds` inheriting globs incorrectly when the
+  child task has a different `dir:` than the parent. The child's relative
+  globs were expanded against the parent's dir and matched nothing, so
+  wrapper tasks reported "up to date" after their first run even when
+  sources had actually changed.
+
+### Improved
+
+- Cache archives are now written via a temp file + rename so partial or
+  corrupt archives can no longer appear at the destination path if the
+  process is interrupted mid-write.
+
 ## v3.62.0 - 2026-03-19
 
 ### Improved
