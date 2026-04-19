@@ -3945,6 +3945,68 @@ func TestFromMixed(t *testing.T) {
 	assert.NotContains(t, buff.String(), "up to date")
 }
 
+func TestFromDepsChildDifferentDir(t *testing.T) {
+	// Regression: when a "from: deps" child task has a different dir than
+	// the parent, its relative globs must be resolved against the child's
+	// dir. Otherwise source files never match, the checksum is computed
+	// from static metadata only, and the wrapper is incorrectly reported
+	// as up-to-date after the first run even when sources have changed.
+	t.Parallel()
+
+	dir := t.TempDir()
+	subDir := filepath.Join(dir, "sub")
+	require.NoError(t, os.MkdirAll(subDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(subDir, "input.txt"), []byte("data\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Taskfile.yml"), []byte(`version: '3'
+tasks:
+  wrapper:
+    sources:
+      - from: deps
+    generates:
+      - from: deps
+    deps:
+      - leaf
+    cmds:
+      - true
+
+  leaf:
+    dir: sub
+    sources:
+      - input.txt
+    generates:
+      - output.txt
+    cmds:
+      - cp input.txt output.txt
+`), 0o644))
+
+	tempDir := filepath.Join(dir, ".task")
+	var buff bytes.Buffer
+	e := task.NewExecutor(
+		task.WithDir(dir),
+		task.WithStdout(&buff),
+		task.WithStderr(&buff),
+		task.WithTempDir(task.TempDir{Fingerprint: tempDir}),
+	)
+	require.NoError(t, e.Setup())
+
+	// First run — produces output in the child's dir
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.FileExists(t, filepath.Join(subDir, "output.txt"))
+
+	// Second run — up to date
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.Contains(t, buff.String(), "up to date")
+
+	// Change the child's source — wrapper must detect it and re-run.
+	// Before the fix, the child's "input.txt" glob was resolved against
+	// the parent's dir, matched nothing, and the wrapper stayed "up to date".
+	require.NoError(t, os.WriteFile(filepath.Join(subDir, "input.txt"), []byte("changed\n"), 0o644))
+	buff.Reset()
+	require.NoError(t, e.Run(t.Context(), &task.Call{Task: "wrapper"}))
+	assert.NotContains(t, buff.String(), "up to date", "wrapper should detect source change in child's dir")
+}
+
 func TestFromSourcesCmds(t *testing.T) {
 	// "from: cmds" in sources/generates should collect from cmd task-calls.
 	t.Parallel()

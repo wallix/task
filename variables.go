@@ -395,11 +395,22 @@ func (e *Executor) resolveGlobsFrom(t *ast.Task, field string) error {
 		if err != nil {
 			return fmt.Errorf("task: %s: %s: from: %s: resolving %q: %w", t.Task, field, fromKind, taskName, err)
 		}
+		childDir := ct.ComputeDir()
 		for _, g := range getField(ct) {
 			if g.From != "" {
 				continue
 			}
-			add(g)
+			// Make globs absolute using the child task's dir so they
+			// resolve correctly when the parent task (which may have
+			// a different dir) computes checksums.
+			abs := &ast.Glob{
+				Glob:   filepathext.SmartJoin(childDir, g.Glob),
+				Negate: g.Negate,
+			}
+			if g.Fingerprint != "" {
+				abs.Fingerprint = filepathext.SmartJoin(childDir, g.Fingerprint)
+			}
+			add(abs)
 		}
 		return nil
 	}
