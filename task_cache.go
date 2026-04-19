@@ -104,7 +104,7 @@ type cacheMeta struct {
 // readCacheComment parses the zip comment into a cacheMeta struct.
 func readCacheComment(zr *zip.Reader) cacheMeta {
 	var m cacheMeta
-	for _, line := range strings.Split(zr.Comment, "\n") {
+	for line := range strings.SplitSeq(zr.Comment, "\n") {
 		if v, ok := strings.CutPrefix(line, "task:"); ok {
 			m.task = v
 		} else if v, ok := strings.CutPrefix(line, "sources:"); ok {
