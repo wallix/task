@@ -349,6 +349,11 @@ func (e *Executor) RunTask(ctx context.Context, call *Call) error {
 				if err := checker.SetUpToDate(); err != nil {
 					return err
 				}
+				// Save inside the task lock: a waiter on the same key must
+				// not acquire the lock and miss a not-yet-uploaded entry,
+				// rebuilding work the cache was meant to serve. The lock is
+				// released by the deferred unlock when this closure returns,
+				// after the upload has completed.
 				if cacheActive && sourceHash != "" {
 					e.cacheSave(t)
 				}
