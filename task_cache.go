@@ -133,6 +133,8 @@ func (e *Executor) cacheRestore(t *ast.Task) (bool, cacheMeta) {
 		return e.cacheRestoreFile(t, u.Path)
 	case "redis":
 		return e.cacheRestoreRedis(t, u)
+	case "oci":
+		return e.cacheRestoreOCI(t, u)
 	default:
 		e.Logger.VerboseErrf(logger.Yellow, "task: unsupported cache scheme %q\n", u.Scheme)
 		return false, cacheMeta{}
@@ -193,6 +195,8 @@ func (e *Executor) cacheSave(t *ast.Task) {
 		e.cacheSaveFile(t, u.Path)
 	case "redis":
 		e.cacheSaveRedis(t, u)
+	case "oci":
+		e.cacheSaveOCI(t, u)
 	default:
 		e.Logger.VerboseErrf(logger.Yellow, "task: unsupported cache scheme %q\n", u.Scheme)
 	}
