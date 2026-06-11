@@ -20,6 +20,11 @@ import (
 //	    enabled: '{{ne ._CACHE_DOC_BASE_URL ""}}'
 //	    url: '{{._CACHE_DOC_BASE_URL}}cache:{{urlsafe .TASK}}-{{.CHECKSUM}}.zip'
 //	    lock: '{{._CACHE_DOC_BASE_URL}}lock:{{urlsafe .TASK}}-{{.CHECKSUM}}'
+//	  oci:
+//	    # chunk-deduplicated OCI artifacts (task_cache_oci.go); no ttl —
+//	    # the registry's retention policy prunes old entries
+//	    url: 'oci://{{._CACHE_OCI_REPO}}:{{urlsafe .TASK}}-{{.CHECKSUM}}?ca={{._CACHE_OCI_CA}}'
+//	    lock: '{{._CACHE_LOCK_URL}}lock:{{urlsafe .TASK}}-{{.CHECKSUM}}'
 //
 // At the task level, cache: references a model by name or provides overrides:
 //

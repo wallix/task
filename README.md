@@ -158,7 +158,7 @@ sources:
   - from: deps        # plus all dep sources
 ```
 
-#### Per-task cache block (`file://` and `redis://` backends)
+#### Per-task cache block (`file://`, `redis://` and `oci://` backends)
 
 Cache generated files so that subsequent runs (or other machines) can skip execution entirely. The `url` and `lock` fields are Go templates with access to all task variables plus `{{.CHECKSUM}}` (SHA256 of sources, commands, and generates).
 
@@ -176,6 +176,15 @@ tasks:
     cmds:
       - go build -o bin/app .
 ```
+
+**OCI registry backend.** With an `oci://` URL the entry is stored as an OCI artifact: files are cut into content-defined chunks (FastCDC), compressed with zstd, and pushed as individual blobs that the registry deduplicates by digest. Saving a slightly changed `node_modules` or VM image only uploads the new chunks; pulls go through a local chunk store so repeated restores are incremental. Entries expire through the registry's retention policy (no TTL).
+
+```yaml
+cache:
+  url: 'oci://registry.example.com/task-cache:{{urlsafe .TASK}}-{{.CHECKSUM}}?ca=/etc/ssl/registry-ca.crt'
+```
+
+The URL shape is `oci://[user:password@]host/repo:tag[?ca=<file>][&cas=<dir>][&plainhttp=1]` (the tag carries the cache key and is limited to `[A-Za-z0-9._-]`). Credentials and trust can also come from the environment — `TASK_CACHE_OCI_USER`, `TASK_CACHE_OCI_PASSWORD`, `TASK_CACHE_OCI_CA` and `TASK_CACHE_OCI_CAS_DIR` — keeping secrets out of the Taskfile.
 
 #### Filesystem-based locking
 
@@ -233,7 +242,7 @@ setup tasks (unconditional, sequential)
   -> acquire lock (file or redis)
   -> run deps (parallel)
   -> check fingerprint (sources + generates, including from: resolution)
-     -> try restore from cache (file:// or redis://)
+     -> try restore from cache (file://, redis:// or oci://)
      -> if miss: execute task, then save to cache
   -> release lock
 ```
