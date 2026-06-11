@@ -1,5 +1,32 @@
 # Changelog
 
+## v3.70.0 - 2026-06-11
+
+### Added
+
+- New `oci://` cache backend. Cache entries are stored as OCI artifacts:
+  generated files are concatenated into one stream, cut into
+  content-defined chunks (FastCDC), zstd-compressed, and pushed as
+  individual blobs that the registry deduplicates by digest. Saving a
+  slightly changed tree only uploads the new chunks, and an optional local
+  chunk store makes repeated restores incremental. The URL shape is
+  `oci://[user:password@]host/repo:tag[?ca=<file>][&cas=<dir>][&plainhttp=1]`,
+  with `TASK_CACHE_OCI_USER`, `TASK_CACHE_OCI_PASSWORD`, `TASK_CACHE_OCI_CA`
+  and `TASK_CACHE_OCI_CAS_DIR` as environment fallbacks for credentials,
+  trust anchor and local store.
+
+### Fixes
+
+- Reject symlink traversal when restoring cached archives. A crafted cache
+  entry (or `--import-cache` input) could carry a symlink pointing outside
+  the project root followed by a file written through it, escaping the task
+  directory. Both the zip (`file://`/`redis://`) and OCI backends now reject
+  non-local entry names and any write whose parent chain crosses a symlink.
+
+### Changed
+
+- Require Go 1.26 and refresh module dependencies.
+
 ## v3.63.0 - 2026-04-19
 
 ### Fixes
