@@ -215,8 +215,42 @@ func addFileToZip(zw *zip.Writer, baseDir, filePath string) error {
 	return err
 }
 
+// checkNoSymlinkParents rejects a path any of whose existing parent
+// directories is a symlink: writing under it would follow the link out of
+// baseDir. slashPath is relative and slash-separated; the leaf is not
+// checked — it is the entry being created.
+func checkNoSymlinkParents(baseDir, slashPath string) error {
+	parts := strings.Split(slashPath, "/")
+	dir := baseDir
+	for _, part := range parts[:len(parts)-1] {
+		dir = filepath.Join(dir, part)
+		fi, err := os.Lstat(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil // nothing deeper exists yet, nothing to follow
+			}
+			return err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("entry %q: parent %q is a symlink", slashPath, part)
+		}
+	}
+	return nil
+}
+
 // extractZipEntry extracts a single entry from a ZIP archive to baseDir.
 func extractZipEntry(baseDir string, entry *zip.File) error {
+	// reject names that escape baseDir, and names whose parent chain crosses
+	// a symlink extracted by an earlier entry — either would let a malicious
+	// archive write outside the project root
+	clean := filepath.Clean(filepath.ToSlash(entry.Name))
+	if clean == ".." || strings.HasPrefix(clean, "../") || filepath.IsAbs(entry.Name) {
+		return fmt.Errorf("entry %q is outside the extraction root", entry.Name)
+	}
+	if err := checkNoSymlinkParents(baseDir, clean); err != nil {
+		return err
+	}
+
 	path := filepath.Join(baseDir, entry.Name)
 
 	if entry.FileInfo().IsDir() {
