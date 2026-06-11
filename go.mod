@@ -18,7 +18,10 @@ require (
 	github.com/go-task/template v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/klauspost/compress v1.18.2
 	github.com/mitchellh/hashstructure/v2 v2.0.2
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/puzpuzpuz/xsync/v4 v4.4.0
 	github.com/sajari/fuzzy v1.0.0
 	github.com/sebdah/goldie/v2 v2.8.0
@@ -31,6 +34,7 @@ require (
 	golang.org/x/term v0.40.0
 	mvdan.cc/sh/moreinterp v0.0.0-20260120230322-19def062a997
 	mvdan.cc/sh/v3 v3.12.1-0.20260124232039-e74afc18e65b
+	oras.land/oras-go/v2 v2.6.1
 )
 
 require (
@@ -45,7 +49,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
