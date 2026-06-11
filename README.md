@@ -186,6 +186,8 @@ cache:
 
 The URL shape is `oci://[user:password@]host/repo:tag[?ca=<file>][&cas=<dir>][&plainhttp=1]` (the tag carries the cache key and is limited to `[A-Za-z0-9._-]`). Credentials and trust can also come from the environment — `TASK_CACHE_OCI_USER`, `TASK_CACHE_OCI_PASSWORD`, `TASK_CACHE_OCI_CA` and `TASK_CACHE_OCI_CAS_DIR` — keeping secrets out of the Taskfile.
 
+See [docs/cache-server.md](docs/cache-server.md) for setting up the server side (a Harbor registry for the cache entries plus a Redis for the distributed locks).
+
 #### Filesystem-based locking
 
 Tasks with `sources` and `generates` automatically acquire a POSIX advisory file lock (stored in `.task/`). The lock key is `taskname:sourcehash`, so different source states don't contend on the same lock.
