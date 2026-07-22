@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.72.0 - 2026-07-22
+
+### Fixes
+
+- The `oci://` cache now fails fast when the registry is unreachable. Its
+  HTTP transport previously cloned `http.DefaultTransport`, which has no
+  response-header timeout and incurs its 30s dial timeout on each retry, so
+  a blocked egress route dropping packets stalled every cache operation and
+  the build appeared frozen with no explanation. The transport now uses a
+  10s connect and 30s response-header timeout, so an unreachable cache fails
+  fast and the task runs uncached, and a one-time warning per host makes the
+  fallback visible instead of silent.
+
 ## v3.70.0 - 2026-06-11
 
 ### Added
