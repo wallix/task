@@ -3,16 +3,47 @@ package task
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/wallix/task/v3/errors"
 	"github.com/wallix/task/v3/internal/fingerprint"
 	"github.com/wallix/task/v3/internal/logger"
 	"github.com/wallix/task/v3/internal/ocicas"
 	"github.com/wallix/task/v3/taskfile/ast"
 )
+
+// isCacheUnreachable reports whether err is a network-level failure reaching the
+// cache registry (dial refused/timeout, DNS failure, stalled response) as
+// opposed to a cache miss or a content error.
+func isCacheUnreachable(err error) bool {
+	// context.DeadlineExceeded satisfies net.Error, but a caller-imposed
+	// deadline is not a registry-reachability signal, so exclude it. (Plain
+	// cancellation via context.Canceled is not a net.Error and is already
+	// excluded by the errors.As check below.)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
+// warnCacheUnreachable emits a single visible warning the first time host is
+// found unreachable. Cache operations otherwise fail quietly (VerboseErrf) so a
+// normal miss stays silent; a connectivity failure that silently disables the
+// cache should not.
+func (e *Executor) warnCacheUnreachable(host string, err error) {
+	if host == "" || !isCacheUnreachable(err) {
+		return
+	}
+	if _, seen := e.unreachableWarned.LoadOrStore(host, struct{}{}); seen {
+		return
+	}
+	e.Logger.Errf(logger.Yellow, "task: WARNING: cache registry %s unreachable, continuing without cache (%v)\n", host, err)
+}
 
 // oci:// cache transport: the entry is an ocicas artifact (content-defined
 // chunks deduplicated registry-side, see internal/ocicas) instead of a zip
@@ -102,6 +133,7 @@ func (e *Executor) cacheRestoreOCI(t *ast.Task, u *url.URL) (bool, cacheMeta) {
 	ann, err := store.ResolveAnnotations(ctx, tag)
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache restore %q: %v\n", t.Name(), err)
+		e.warnCacheUnreachable(u.Host, err)
 		return false, cacheMeta{}
 	}
 	if ann == nil {
@@ -116,6 +148,7 @@ func (e *Executor) cacheRestoreOCI(t *ast.Task, u *url.URL) (bool, cacheMeta) {
 	_, ann, err = store.Pull(ctx, tag, e.Dir)
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache restore %q: %v\n", t.Name(), err)
+		e.warnCacheUnreachable(u.Host, err)
 		return false, cacheMeta{}
 	}
 	e.Logger.Errf(logger.Magenta, "task: %q restored from cache\n", t.Name())
@@ -162,6 +195,7 @@ func (e *Executor) cacheSaveOCI(t *ast.Task, u *url.URL) {
 	}
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", t.Name(), err)
+		e.warnCacheUnreachable(u.Host, err)
 		return
 	}
 	err = store.PushIndex(ctx, tag, idx, map[string]string{
@@ -171,6 +205,7 @@ func (e *Executor) cacheSaveOCI(t *ast.Task, u *url.URL) {
 	})
 	if err != nil {
 		e.Logger.VerboseErrf(logger.Yellow, "task: cache save %q: %v\n", t.Name(), err)
+		e.warnCacheUnreachable(u.Host, err)
 		return
 	}
 	pushed, skipped, sent := sess.Stats()

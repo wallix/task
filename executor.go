@@ -73,6 +73,11 @@ type (
 		executionHashes      map[string]context.Context
 		executionHashesMutex sync.Mutex
 		watchedDirs          *xsync.Map[string, bool]
+		// unreachableWarned tracks cache hosts already reported as
+		// unreachable, so the "continuing without cache" warning prints
+		// once per host per run rather than once per cached task (a build
+		// has many). Scoped to the Executor so the state resets per run.
+		unreachableWarned sync.Map // host string -> struct{}
 	}
 	TempDir struct {
 		Fingerprint string

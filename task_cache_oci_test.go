@@ -1,8 +1,18 @@
 package task
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net"
 	"net/url"
+	"strings"
 	"testing"
+
+	"oras.land/oras-go/v2/errdef"
+
+	"github.com/wallix/task/v3/internal/logger"
 )
 
 func TestParseOCICacheURL(t *testing.T) {
@@ -77,5 +87,68 @@ func TestParseOCICacheURLEnvFallbacks(t *testing.T) {
 	}
 	if opts.Username != "urluser" || opts.CAFile != "/url/ca" || opts.CacheDir != "/url/cas" {
 		t.Errorf("URL should take precedence: %+v", opts)
+	}
+}
+
+func TestIsCacheUnreachable(t *testing.T) {
+	t.Parallel()
+
+	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"dial failure", dialErr, true},
+		{"wrapped dial failure", fmt.Errorf("resolve annotations: %w", dialErr), true},
+		{"cache miss", errdef.ErrNotFound, false},
+		{"wrapped cache miss", fmt.Errorf("pull: %w", errdef.ErrNotFound), false},
+		{"content error", errors.New("bad manifest"), false},
+		{"context canceled", context.Canceled, false},
+		// context.DeadlineExceeded satisfies net.Error but a caller-imposed
+		// deadline is not a registry-reachability signal.
+		{"context deadline", context.DeadlineExceeded, false},
+		{"wrapped context deadline", fmt.Errorf("pull: %w", context.DeadlineExceeded), false},
+		{"nil", nil, false},
+	}
+	for _, tc := range cases {
+		if got := isCacheUnreachable(tc.err); got != tc.want {
+			t.Errorf("%s: isCacheUnreachable = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestWarnCacheUnreachable(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	e := &Executor{Logger: &logger.Logger{Stderr: &buf}}
+	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+
+	// First unreachable failure for a host warns once; repeats stay silent.
+	e.warnCacheUnreachable("host-a", dialErr)
+	e.warnCacheUnreachable("host-a", dialErr)
+	if n := strings.Count(buf.String(), "host-a"); n != 1 {
+		t.Errorf("host-a warned %d times, want 1", n)
+	}
+
+	// A different host warns independently.
+	e.warnCacheUnreachable("host-b", dialErr)
+	if n := strings.Count(buf.String(), "host-b"); n != 1 {
+		t.Errorf("host-b warned %d times, want 1", n)
+	}
+
+	// A non-network error (cache miss / content error) never warns.
+	buf.Reset()
+	e.warnCacheUnreachable("host-c", errdef.ErrNotFound)
+	if buf.Len() != 0 {
+		t.Errorf("cache miss should not warn, got %q", buf.String())
+	}
+
+	// An empty host never warns.
+	e.warnCacheUnreachable("", dialErr)
+	if buf.Len() != 0 {
+		t.Errorf("empty host should not warn, got %q", buf.String())
 	}
 }

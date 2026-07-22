@@ -9,11 +9,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
@@ -32,6 +34,18 @@ import (
 // fetchConcurrency bounds the parallel chunk transfers (pull fetches and
 // push session uploads).
 const fetchConcurrency = 8
+
+const (
+	// connectTimeout bounds the TCP connect to the registry. http.DefaultTransport
+	// uses 30s; a shorter bound lets an unreachable cache (e.g. a blocked egress
+	// route dropping SYNs) fail fast so the caller runs the task uncached instead
+	// of stalling.
+	connectTimeout = 10 * time.Second
+	// responseHeaderTimeout bounds the wait for response headers after connecting,
+	// so a host that accepts the connection then stalls aborts instead of hanging.
+	// It does not cap the body transfer, so large blobs still stream.
+	responseHeaderTimeout = 30 * time.Second
+)
 
 // Store pushes and pulls ocicas artifacts against an OCI target (a remote
 // repository in production, an in-memory store in tests), with an optional
@@ -68,6 +82,11 @@ func NewRemoteStore(ref string, o RemoteOptions) (*Store, error) {
 	}
 	repo.PlainHTTP = o.PlainHTTP
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout:   connectTimeout,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	transport.ResponseHeaderTimeout = responseHeaderTimeout
 	if o.CAFile != "" {
 		pem, err := os.ReadFile(o.CAFile)
 		if err != nil {
